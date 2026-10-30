@@ -1,0 +1,53 @@
+# MindWiki
+
+Lokales Wiki als Mind Map: Artikel hängen in einem Baum (Hauptthema in der Mitte), können per `[[` aufeinander verweisen und enthalten abhakbare Abläufe mit Protokoll. Alles liegt in **einer** SQLite-Datei auf deinem Rechner.
+
+## Programm benutzen
+
+- **Installieren:** `dist\MindWiki-Setup-1.0.0.exe` ausführen – oder ohne Installation `dist\MindWiki-1.0.0-portable.exe` starten.
+  Die .exe ist nicht signiert; Windows SmartScreen fragt beim ersten Start nach („Weitere Informationen“ → „Trotzdem ausführen“).
+- **Daten:** standardmäßig `Dokumente\MindWiki\Wiki.db`. Über *Datei › Neues Wiki / Wiki öffnen* kannst du weitere Wikis anlegen bzw. wechseln.
+- **Sicherungen:** beim Start höchstens einmal pro Tag automatisch in `Sicherungen\` neben der Datenbank (die letzten 5 bleiben). Manuell: *Datei › Sicherung erstellen* (Strg+Umschalt+S).
+- **Papierkorb:** Gelöschte Äste lassen sich unter *Bearbeiten › Papierkorb* wiederherstellen.
+
+### IT-Funktionen
+
+- **Vorlagen:** Server / System, Netzwerkgerät, Software, Anleitung, Störung / Fehlerbehebung, Dienstleister / Kontakt – jeweils mit Steckbrief-Feldern, Gliederung und passendem Ablauf. Erreichbar über den Plus-Knopf oben, per Rechtsklick „Unterartikel aus Vorlage“ oder in einem leeren Artikel über „Mit Vorlage starten“.
+- **Steckbrief:** frei benennbare Felder (Hostname, IP-Adresse, Standort …) oben im Artikel, mit Kopieren-Knopf und Vorschlägen beim Tippen; die Suche findet auch Feldwerte. Passwörter gehören in einen Passwort-Manager – die Wiki-Datei ist nicht verschlüsselt.
+- **Symbole:** 35 IT-Symbole (Server, Netzwerk, Drucker, Datenbank, Cloud …) für die Knoten – per Rechtsklick „Symbol wählen“ oder über das Symbol neben dem Artikeltitel.
+
+### Wichtigste Kürzel (F1 zeigt alle)
+
+| Kürzel | Wirkung |
+|---|---|
+| Tab / Enter | Unterartikel / Artikel daneben anlegen |
+| F2, Doppelklick | Umbenennen |
+| Leertaste | Ast ein-/ausklappen |
+| Pfeiltasten, Alt+↑/↓ | Navigieren, Reihenfolge ändern |
+| Knoten auf anderen ziehen | Umhängen |
+| Strg+K | Suchen (Titel, Text, Ablaufschritte) |
+| `[[` im Text | Anderen Artikel verlinken (erscheint als gestrichelte Linie in der Mind Map) |
+| Strg+V | Bild/Screenshot einfügen |
+
+## Entwicklung
+
+Voraussetzung: Node.js 24.
+
+```bash
+npm install
+npm run dev          # App mit Live-Neuladen starten
+npm test             # Unit-Tests (Datenbank, Layout)
+npm run e2e          # baut und testet die echte App mit Playwright
+npm run typecheck
+npm run build:win    # Installer + portable .exe nach dist\
+node scripts/make-icon.mjs   # App-Symbol neu erzeugen
+```
+
+Falls Electron beim ersten Start fehlt: `node node_modules/electron/install.js`.
+
+### Aufbau
+
+- `src/main` – Electron-Hauptprozess: Datenbank (`db.ts`, `store.ts`, eingebautes `node:sqlite`), IPC (`ipc.ts`), Fenster/Menü (`index.ts`), Bilder über das Protokoll `wikiimg://`
+- `src/preload` – stellt der Oberfläche die typisierte `window.wiki`-API bereit
+- `src/shared/types.ts` – gemeinsame Typen und Liste der IPC-Methoden
+- `src/renderer/src` – React-Oberfläche: `mindmap/` (React Flow + Layout), `article/` (TipTap-Editor), `checklist/` (Abläufe), `dialogs/`
