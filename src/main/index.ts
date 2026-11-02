@@ -3,7 +3,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { IMAGE_SCHEME, type MenuAction, type WikiEvent } from '../shared/types'
 import { registerIpc, tryOpen } from './ipc'
-import { defaultDbPath, loadSettings } from './settings'
+import { ensureSampleWiki } from './sample'
+import { defaultDbPath, loadSettings, sampleDbPath } from './settings'
 import { closeWiki, currentStore, onWikiChange, peekStore, wikiName } from './wiki'
 
 // Für automatische Tests: eigene Einstellungen und Datenbank statt der echten.
@@ -83,7 +84,12 @@ function buildMenu(): void {
     },
     {
       label: 'Hilfe',
-      submenu: [item('Tastaturkürzel', 'shortcuts', 'F1'), item('Über MindWiki', 'about')]
+      submenu: [
+        item('Tastaturkürzel', 'shortcuts', 'F1'),
+        item('Beispiel-Wiki öffnen', 'sample-db'),
+        { type: 'separator' },
+        item('Über MindWiki', 'about')
+      ]
     }
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
@@ -167,6 +173,14 @@ function openInitialWiki(): boolean {
   // Eine zuletzt benutzte, inzwischen gelöschte Datei wird nicht still neu angelegt.
   const last = loadSettings().lastDbPath
   if (last && fs.existsSync(last) && tryOpen(null, last)) return true
+  // Allererster Start: Statt eines leeren Wikis das Beispiel zeigen, damit man sieht, wie es aussieht.
+  if (!last && !fs.existsSync(defaultDbPath())) {
+    try {
+      if (tryOpen(null, ensureSampleWiki(sampleDbPath()))) return true
+    } catch (err) {
+      console.error('Beispiel-Wiki konnte nicht angelegt werden', err)
+    }
+  }
   return tryOpen(null, defaultDbPath())
 }
 

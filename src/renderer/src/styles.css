@@ -2533,3 +2533,26 @@ input.fs-label::-webkit-calendar-picker-indicator {
 .diff-list + .diff-list {
   margin-top: 8px;
 }
+
+/* ---------- Beispiel-Wiki ---------- */
+
+.sample-bar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  padding: 7px 10px 7px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent-soft) 92%, transparent);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.sample-bar > svg {
+  color: var(--accent);
+}
