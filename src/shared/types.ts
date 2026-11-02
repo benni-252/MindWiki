@@ -300,6 +300,8 @@ export interface WikiRpc {
   openDb(): Promise<boolean>
   /** Beispiel-Wiki öffnen (beim ersten Mal anlegen) */
   openSampleDb(): Promise<boolean>
+  /** Artikel als PDF speichern; liefert den Pfad oder null (abgebrochen) */
+  exportPdf(id: number): Promise<string | null>
   getUpdateState(): UpdateState
   checkForUpdates(): Promise<UpdateState>
   downloadUpdate(): Promise<void>
@@ -376,6 +378,7 @@ export const RPC_METHODS = [
   'newDb',
   'openDb',
   'openSampleDb',
+  'exportPdf',
   'getUpdateState',
   'checkForUpdates',
   'downloadUpdate',
@@ -406,6 +409,7 @@ export type MenuAction =
   | 'approvals'
   | 'sample-db'
   | 'check-updates'
+  | 'export-pdf'
   | 'toggle-links'
   | 'fit'
   | 'shortcuts'

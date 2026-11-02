@@ -2,6 +2,19 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.5.0
+
+**Neu: Artikel als PDF exportieren**
+- Knopf oben im Artikel, Rechtsklick in der Mind Map oder *Datei › Artikel als PDF exportieren* (Strg+P).
+- Im PDF: Pfad, Steckbrief, Text mit Bildern und Tabellen, Abläufe zum Abhaken (mit letztem Durchlauf), Abhängigkeiten und Seitenzahlen.
+- Passwort-Felder erscheinen nur als „••••••“. Störungen und noch nicht freigegebene Entwürfe sind im PDF gekennzeichnet.
+
+**Download**
+- `MindWiki-Setup-1.5.0.exe` – Installer (mit automatischen Updates)
+- `MindWiki-1.5.0-portable.exe` – ohne Installation starten
+
+Wer 1.4.0 installiert hat, bekommt dieses Update in der App angeboten.
+
 ## 1.4.0
 
 **Neu: Anmeldung mit Benutzern und Rollen**

@@ -107,3 +107,8 @@ export function isDeletedUser(tree: TreeData | null, name: string | null | undef
   const lower = name.toLowerCase()
   return tree.deletedUsers.some((u) => u.toLowerCase() === lower)
 }
+
+/** Was der Benutzer von einem Artikel sieht: den eigenen Entwurf, sonst den Artikel selbst. */
+export function visibleContentId(article: ArticleSummary, userName: string): number {
+  return article.draftId != null && article.draftBy === userName ? article.draftId : article.id
+}

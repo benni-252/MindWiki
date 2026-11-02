@@ -43,6 +43,8 @@ function buildMenu(): void {
         item('Neues Wiki…', 'new-db', 'CmdOrCtrl+N'),
         item('Wiki öffnen…', 'open-db', 'CmdOrCtrl+O'),
         { type: 'separator' },
+        item('Artikel als PDF exportieren…', 'export-pdf', 'CmdOrCtrl+P'),
+        { type: 'separator' },
         item('Sicherung erstellen…', 'backup-db', 'CmdOrCtrl+Shift+S'),
         item('Speicherort im Explorer zeigen', 'reveal-db'),
         { type: 'separator' },

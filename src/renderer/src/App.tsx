@@ -91,7 +91,13 @@ export function App(): React.JSX.Element {
 
   // Die Kürzel hängen am Anwendungsmenü; dies greift nur, falls das Menü sie nicht abfängt.
   useEffect(() => {
-    const keys: Record<string, MenuAction> = { 'ctrl+k': 'search', 'ctrl+l': 'toggle-links', 'ctrl+0': 'fit', f1: 'shortcuts' }
+    const keys: Record<string, MenuAction> = {
+      'ctrl+k': 'search',
+      'ctrl+l': 'toggle-links',
+      'ctrl+0': 'fit',
+      'ctrl+p': 'export-pdf',
+      f1: 'shortcuts'
+    }
     const onKey = (e: KeyboardEvent): void => {
       const combo = `${e.ctrlKey || e.metaKey ? 'ctrl+' : ''}${e.key.toLowerCase()}`
       const action = keys[combo]
