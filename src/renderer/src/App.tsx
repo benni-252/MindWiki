@@ -1,5 +1,5 @@
 import { ReactFlowProvider } from '@xyflow/react'
-import { FlaskConical } from 'lucide-react'
+import { FlaskConical, KeyRound } from 'lucide-react'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import type { MenuAction } from '../../shared/types'
 import { runAction } from './actions'
@@ -13,19 +13,40 @@ import { OutagesDialog } from './dialogs/OutagesDialog'
 import { SearchDialog } from './dialogs/SearchDialog'
 import { Toasts } from './dialogs/Toasts'
 import { TrashDialog } from './dialogs/TrashDialog'
-import { UserNameDialog } from './dialogs/UserNameDialog'
+import { ChangePasswordDialog } from './dialogs/ChangePasswordDialog'
+import { UpdateDialog } from './dialogs/UpdateDialog'
+import { UsersDialog } from './dialogs/UsersDialog'
+import { LoginScreen } from './LoginScreen'
 import { MindMap } from './mindmap/MindMap'
 import { useWiki } from './store'
 import { TopBar } from './TopBar'
 
 const MIN_PANEL = 380
 
+/** Erinnerung, solange der Admin noch das Start-Passwort „admin“ hat. */
+function AdminPasswordBar(): React.JSX.Element | null {
+  const session = useWiki((s) => s.session)
+  const info = useWiki((s) => s.loginInfo)
+  if (session?.role !== 'admin' || !info?.defaultAdminPassword) return null
+  return (
+    <div className="notice-bar warning" role="note">
+      <KeyRound size={16} />
+      <span>
+        Das Admin-Passwort ist noch <strong>„admin“</strong> – bitte ändern.
+      </span>
+      <button className="btn btn-small btn-primary" onClick={() => useWiki.getState().setDialog('change-password')}>
+        Passwort ändern…
+      </button>
+    </div>
+  )
+}
+
 /** Hinweis, solange das mitgelieferte Beispiel-Wiki offen ist. */
 function SampleBar(): React.JSX.Element | null {
   const dbInfo = useWiki((s) => s.dbInfo)
   if (!dbInfo?.isSample) return null
   return (
-    <div className="sample-bar" role="note">
+    <div className="notice-bar" role="note">
       <FlaskConical size={16} />
       <span>
         <strong>Beispiel-Wiki</strong> mit erfundenen Daten – zum Ausprobieren.
@@ -55,6 +76,8 @@ export function App(): React.JSX.Element {
   const panelOpen = useWiki((s) => s.panelOpen)
   const panelMax = useWiki((s) => s.panelMax)
   const dialog = useWiki((s) => s.dialog)
+  const session = useWiki((s) => s.session)
+  const loginInfo = useWiki((s) => s.loginInfo)
   const [fatal, setFatal] = useState<string | null>(null)
   const [panelWidth, setPanelWidth] = useState(readPanelWidth)
   const dragging = useRef(false)
@@ -87,6 +110,8 @@ export function App(): React.JSX.Element {
           void flushPending().finally(() => void wiki.confirmClose())
         } else if (event.type === 'external-change') {
           void useWiki.getState().externalChange()
+        } else if (event.type === 'update') {
+          useWiki.getState().setUpdate(event.state)
         } else {
           void runAction(event.action)
         }
@@ -121,6 +146,15 @@ export function App(): React.JSX.Element {
       </div>
     )
   }
+  if (!loginInfo) return <div className="loading">Lade Wiki …</div>
+  if (!session) {
+    return (
+      <>
+        <LoginScreen key={`${loginInfo.isSample}-${loginInfo.lastUser}`} />
+        <Toasts />
+      </>
+    )
+  }
   if (!tree) return <div className="loading">Lade Wiki …</div>
 
   const showPanel = panelOpen && selectedId != null
@@ -133,7 +167,10 @@ export function App(): React.JSX.Element {
           className={`workspace ${showPanel ? 'with-panel' : ''} ${showPanel && panelMax ? 'panel-max' : ''}`}
           style={{ '--panel-width': `${panelWidth}px` } as React.CSSProperties}
         >
-          <SampleBar />
+          <div className="notices">
+            <AdminPasswordBar />
+            <SampleBar />
+          </div>
           <MindMap />
           {showPanel && (
             <>
@@ -157,8 +194,10 @@ export function App(): React.JSX.Element {
         {dialog === 'trash' && <TrashDialog />}
         {dialog === 'outages' && <OutagesDialog />}
         {dialog === 'changes' && <ChangesDialog />}
-        {dialog === 'user-name' && <UserNameDialog />}
+        {dialog === 'users' && <UsersDialog />}
+        {dialog === 'change-password' && <ChangePasswordDialog />}
         {dialog === 'approvals' && <ApprovalsDialog />}
+        {dialog === 'update' && <UpdateDialog />}
         {dialog === 'shortcuts' && <ShortcutsDialog />}
         {dialog === 'about' && <AboutDialog />}
         <ConfirmDialog />

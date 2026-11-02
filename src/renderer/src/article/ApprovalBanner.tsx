@@ -176,6 +176,8 @@ export function DiffDialog({ id, canDecide, onClose }: { id: number; canDecide: 
 export function ApprovalBanner({ id, readMode }: { id: number; readMode: boolean }): React.JSX.Element | null {
   const tree = useWiki((s) => s.tree)
   const userName = useWiki((s) => s.userName)
+  const session = useWiki((s) => s.session)
+  const canApprove = session?.role === 'editor' || session?.role === 'admin'
   const [diffOpen, setDiffOpen] = useState(false)
   const [rejecting, setRejecting] = useState(false)
 
@@ -195,7 +197,9 @@ export function ApprovalBanner({ id, readMode }: { id: number; readMode: boolean
   )
   const dialogs = (
     <>
-      {diffOpen && <DiffDialog id={id} canDecide={summary.draftBy !== userName} onClose={() => setDiffOpen(false)} />}
+      {diffOpen && (
+        <DiffDialog id={id} canDecide={canApprove && summary.draftBy !== userName} onClose={() => setDiffOpen(false)} />
+      )}
       {rejecting && <RejectDialog id={id} onClose={() => setRejecting(false)} />}
     </>
   )
@@ -221,7 +225,9 @@ export function ApprovalBanner({ id, readMode }: { id: number; readMode: boolean
         <p>
           {mine
             ? 'Du bearbeitest einen Entwurf. Die anderen sehen deine Änderungen erst, wenn jemand sie freigegeben hat.'
-            : 'Unten siehst du noch den freigegebenen Stand. Sieh dir die Änderungen an und gib sie frei oder lehne sie ab.'}
+            : canApprove
+              ? 'Unten siehst du noch den freigegebenen Stand. Sieh dir die Änderungen an und gib sie frei oder lehne sie ab.'
+              : 'Unten siehst du noch den freigegebenen Stand. Ein Bearbeiter muss die Änderungen freigeben.'}
         </p>
         <div className="approval-actions">
           <button className="btn btn-small" onClick={() => setDiffOpen(true)}>
@@ -232,7 +238,7 @@ export function ApprovalBanner({ id, readMode }: { id: number; readMode: boolean
               Entwurf verwerfen
             </button>
           ) : (
-            decide
+            canApprove && decide
           )}
         </div>
         {dialogs}
@@ -250,10 +256,12 @@ export function ApprovalBanner({ id, readMode }: { id: number; readMode: boolean
         </div>
         <p>
           {mine
-            ? 'Jemand anderes muss ihn freigeben. Bis dahin ist er für alle als Entwurf markiert; du kannst ihn weiter bearbeiten.'
-            : 'Prüfe den Inhalt und gib ihn frei oder lehne ihn ab. Abgelehnte Artikel landen im Papierkorb.'}
+            ? 'Ein Bearbeiter (nicht du selbst) muss ihn freigeben. Bis dahin ist er für alle als Entwurf markiert; du kannst ihn weiter bearbeiten.'
+            : canApprove
+              ? 'Prüfe den Inhalt und gib ihn frei oder lehne ihn ab. Abgelehnte Artikel landen im Papierkorb.'
+              : 'Ein Bearbeiter muss ihn freigeben.'}
         </p>
-        {!mine && <div className="approval-actions">{decide}</div>}
+        {!mine && canApprove && <div className="approval-actions">{decide}</div>}
         {dialogs}
       </section>
     )

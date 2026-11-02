@@ -1,6 +1,24 @@
-import { ChevronDown, History, Keyboard, Link2, Plus, Scan, Search, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
+import {
+  ArrowDownCircle,
+  ChevronDown,
+  KeyRound,
+  LogOut,
+  UserRound,
+  Users,
+  History,
+  Keyboard,
+  Link2,
+  Plus,
+  Scan,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
+  TriangleAlert
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { runAction } from './actions'
+import { ROLE_LABEL } from '../../shared/types'
 import { pendingApprovals } from './dialogs/ApprovalsDialog'
 import { useWiki } from './store'
 import { TemplateList } from './TemplateList'
@@ -93,18 +111,108 @@ function ChangesButton(): React.JSX.Element {
 function ApprovalsButton(): React.JSX.Element | null {
   const tree = useWiki((s) => s.tree)
   const userName = useWiki((s) => s.userName)
+  const session = useWiki((s) => s.session)
   if (!tree) return null
-  const { forMe, mine } = pendingApprovals(tree, userName)
-  if (!tree.approvalRequired && forMe.length + mine.length === 0) return null
-  const count = forMe.length
+  const { forMe, mine } = pendingApprovals(tree, userName, session?.role === 'editor' || session?.role === 'admin')
+  const total = forMe.length + mine.length
+  if (!tree.approvalRequired && total === 0) return null
+  if (total === 0) {
+    return (
+      <button className="icon-btn" title="Freigaben – nichts offen" onClick={() => void runAction('approvals')}>
+        <ShieldCheck size={18} />
+      </button>
+    )
+  }
+  const details = [
+    forMe.length > 0 && `${forMe.length} ${forMe.length === 1 ? 'wartet' : 'warten'} auf deine Freigabe`,
+    mine.length > 0 && `${mine.length} ${mine.length === 1 ? 'eigener Entwurf wartet' : 'eigene Entwürfe warten'} auf andere`
+  ]
+    .filter(Boolean)
+    .join(' · ')
   return (
     <button
-      className={`icon-btn badge-host ${count > 0 ? 'has-approvals' : ''}`}
-      title={count > 0 ? `${count} ${count === 1 ? 'Freigabe wartet' : 'Freigaben warten'} auf dich` : 'Freigaben'}
+      className={`approval-pill ${forMe.length > 0 ? 'for-me' : 'mine'}`}
+      title={details}
       onClick={() => void runAction('approvals')}
     >
-      <ShieldCheck size={18} />
-      {count > 0 && <span className="badge badge-approval">{count > 99 ? '99+' : count}</span>}
+      <ShieldAlert size={15} />
+      <strong>{total}</strong> {total === 1 ? 'Freigabe offen' : 'Freigaben offen'}
+    </button>
+  )
+}
+
+/** Angemeldeter Benutzer mit Menü: Passwort, Benutzerverwaltung (Admin), Abmelden. */
+function UserMenu(): React.JSX.Element | null {
+  const session = useWiki((s) => s.session)
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: Event): void => {
+      if (e instanceof KeyboardEvent && e.key !== 'Escape') return
+      if (e instanceof MouseEvent && ref.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    window.addEventListener('mousedown', close, true)
+    window.addEventListener('keydown', close, true)
+    return () => {
+      window.removeEventListener('mousedown', close, true)
+      window.removeEventListener('keydown', close, true)
+    }
+  }, [open])
+
+  if (!session) return null
+  const pick = (action: 'change-password' | 'users' | 'approvals' | 'logout') => () => {
+    setOpen(false)
+    void runAction(action)
+  }
+  return (
+    <div className="user-menu" ref={ref}>
+      <button className="user-chip" aria-expanded={open} title="Angemeldet" onClick={() => setOpen((o) => !o)}>
+        <UserRound size={15} />
+        <span>{session.username}</span>
+        <small>{ROLE_LABEL[session.role]}</small>
+      </button>
+      {open && (
+        <div className="menu dropdown" role="menu">
+          <button onClick={pick('change-password')}>
+            Passwort ändern <KeyRound size={14} />
+          </button>
+          {session.role === 'admin' && (
+            <>
+              <button onClick={pick('users')}>
+                Benutzer verwalten <Users size={14} />
+              </button>
+              <button onClick={pick('approvals')}>
+                Freigaben einstellen <ShieldCheck size={14} />
+              </button>
+            </>
+          )}
+          <hr />
+          <button onClick={pick('logout')}>
+            Abmelden <LogOut size={14} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Hinweis auf eine neue Version, solange sie verfügbar, im Download oder installationsbereit ist. */
+function UpdateIndicator(): React.JSX.Element | null {
+  const update = useWiki((s) => s.update)
+  if (update.status !== 'available' && update.status !== 'downloading' && update.status !== 'ready') return null
+  const label =
+    update.status === 'ready'
+      ? 'Neu starten zum Aktualisieren'
+      : update.status === 'downloading'
+        ? `Update wird geladen … ${update.percent ?? 0} %`
+        : `Update ${update.version ?? ''} verfügbar`
+  return (
+    <button className="update-pill" title="Neue MindWiki-Version" onClick={() => useWiki.getState().setDialog('update')}>
+      <ArrowDownCircle size={15} />
+      {label}
     </button>
   )
 }
@@ -138,6 +246,7 @@ export function TopBar(): React.JSX.Element {
       </button>
 
       <OutageIndicator />
+      <UpdateIndicator />
 
       <div className="topbar-actions">
         <AddMenu />
@@ -160,6 +269,7 @@ export function TopBar(): React.JSX.Element {
         <button className="icon-btn" title="Tastaturkürzel (F1)" onClick={() => void runAction('shortcuts')}>
           <Keyboard size={18} />
         </button>
+        <UserMenu />
       </div>
     </header>
   )

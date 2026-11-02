@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, Maximize2, Minimize2, PenLine, Shapes, TriangleAlert, X } from 'lucide-react'
+import { BookOpen, ChevronRight, Maximize2, Minimize2, PenLine, Shapes, TriangleAlert, UserX, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TEMPLATES } from '../../../shared/templates'
 import type { Article, ArticleField } from '../../../shared/types'
@@ -6,7 +6,7 @@ import { errorMessage, wiki } from '../api'
 import { ChecklistSection } from '../checklist/ChecklistSection'
 import { IconPicker, NodeIcon } from '../icons'
 import { useWiki } from '../store'
-import { indexTree, pathTo, seenAt } from '../treeUtils'
+import { indexTree, isDeletedUser, pathTo, seenAt } from '../treeUtils'
 import { ApprovalBanner } from './ApprovalBanner'
 import { Backlinks } from './Backlinks'
 import { Dependencies } from './Dependencies'
@@ -143,8 +143,13 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
     !!summary &&
     (summary.approved || (!!summary.createdBy && summary.createdBy !== userName))
   const contentReadOnly = readMode || locked
+  // Noch nicht freigegebener Text: neuer Artikel komplett, im eigenen Entwurf die geänderten Absätze
+  const unapproved =
+    contentId !== id ? 'changes' : tree?.approvalRequired && summary && !summary.approved ? 'all' : null
 
   const [article, setArticle] = useState<Article | null | undefined>(undefined)
+  // freigegebener Text, wenn ich in meinem Entwurf arbeite (für die Markierung geänderter Absätze)
+  const [baseline, setBaseline] = useState<string | null>(null)
   const [fields, setFields] = useState<ArticleField[]>([])
   const [status, setStatus] = useState<SaveStatus>('saved')
   const loadedId = useRef<number | null>(null)
@@ -159,9 +164,14 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
       setStatus('saved')
     }
     loadedId.current = contentId
-    Promise.all([wiki.getArticle(contentId), wiki.getFields(contentId)])
-      .then(([a, f]) => {
+    Promise.all([
+      wiki.getArticle(contentId),
+      wiki.getFields(contentId),
+      contentId !== id ? wiki.getArticle(id) : Promise.resolve(null)
+    ])
+      .then(([a, f, approved]) => {
         if (!alive) return
+        setBaseline(approved?.content ?? null)
         setArticle(a)
         setFields(f)
         setShownVersion(version)
@@ -243,17 +253,27 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
           {article === null && <p className="muted">Dieser Artikel existiert nicht mehr.</p>}
           {article && (
             <>
+              {summary && isDeletedUser(tree, summary.createdBy) && (
+                <div className="author-deleted-note">
+                  <UserX size={16} />
+                  <span>
+                    Verfasst von <strong>{summary.createdBy}</strong> – dieser Benutzer wurde gelöscht.
+                  </span>
+                </div>
+              )}
               <ApprovalBanner id={id} readMode={readMode} />
               <OutageBanner id={id} readMode={readMode} />
               {isEmpty && !contentReadOnly && <TemplateChooser id={article.id} />}
               <FactSheet articleId={article.id} fields={fields} readMode={contentReadOnly} reload={reloadFields} />
               <Dependencies id={id} readMode={readMode} />
               <Editor
-                key={`editor-${article.id}-${shownVersion}`}
+                key={`editor-${article.id}-${shownVersion}-${unapproved ?? ''}`}
                 articleId={article.id}
                 content={article.content}
                 editable={!contentReadOnly}
                 onStatus={setStatus}
+                unapproved={unapproved}
+                baseline={baseline}
               />
               <ChecklistSection
                 key={`checklists-${article.id}-${shownVersion}`}

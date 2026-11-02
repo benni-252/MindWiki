@@ -33,11 +33,24 @@ export async function runAction(action: MenuAction): Promise<void> {
       case 'trash':
       case 'outages':
       case 'changes':
-      case 'user-name':
       case 'approvals':
       case 'shortcuts':
       case 'about':
         s.setDialog(action)
+        break
+      case 'logout':
+        await s.logout()
+        break
+      case 'change-password':
+        if (s.session) s.setDialog('change-password')
+        break
+      case 'users':
+        if (s.can('admin')) s.setDialog('users')
+        else if (s.session) s.toast('Nur der Admin kann Benutzer verwalten.', 'error')
+        break
+      case 'check-updates':
+        s.setDialog('update')
+        s.setUpdate(await wiki.checkForUpdates())
         break
       case 'toggle-links':
         s.toggleLinks()

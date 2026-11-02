@@ -4,7 +4,7 @@ import type { ChangeEntry } from '../../../shared/types'
 import { errorMessage, flushPending, wiki } from '../api'
 import { Modal } from '../dialogs/Modal'
 import { useWiki } from '../store'
-import { formatWhen, indexTree } from '../treeUtils'
+import { formatWhen, indexTree, isDeletedUser } from '../treeUtils'
 import { TextViewer } from './Editor'
 
 const SHOWN = 6
@@ -71,6 +71,7 @@ export function History({ id, newSince }: { id: number; newSince: string | null 
   const lastChangeAt = useWiki((s) => (s.tree ? indexTree(s.tree).byId.get(id)?.lastChangeAt : null))
   const version = useWiki((s) => s.articleVersion)
   const userName = useWiki((s) => s.userName)
+  const tree = useWiki((s) => s.tree)
   const [entries, setEntries] = useState<ChangeEntry[] | null>(null)
   const [all, setAll] = useState(false)
   const [viewing, setViewing] = useState<ChangeEntry | null>(null)
@@ -100,7 +101,8 @@ export function History({ id, newSince }: { id: number; newSince: string | null 
         {shown.map((c) => (
           <li key={c.id} className={isNew(c) ? 'unseen' : ''}>
             <div className="history-meta">
-              <strong>{c.author}</strong>
+              <strong className={isDeletedUser(tree, c.author) ? 'deleted-name' : ''}>{c.author}</strong>
+              {isDeletedUser(tree, c.author) && <small className="muted">(gelöscht)</small>}
               <time dateTime={c.at} title={new Date(c.at).toLocaleString('de-DE')}>
                 {formatWhen(c.at)}
               </time>

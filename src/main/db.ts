@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
+import { DEFAULT_ADMIN, hashPassword } from './passwords'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -109,6 +110,17 @@ export const MIGRATIONS: string[] = [
   UPDATE articles SET approved_at = created_at;
   CREATE UNIQUE INDEX idx_articles_draft ON articles(draft_of) WHERE draft_of IS NOT NULL;
   INSERT OR IGNORE INTO meta (key, value) VALUES ('approval_required', '0');
+  `,
+  // v6: Benutzer mit Rollen (admin, editor = Bearbeiter, author = Mitarbeiter); gelöschte bleiben als Verweis
+  `
+  CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    role TEXT NOT NULL CHECK (role IN ('admin', 'editor', 'author')),
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (${NOW}),
+    deleted_at TEXT
+  );
   `
 ]
 
@@ -173,6 +185,14 @@ export function openDatabase(file: string, rootTitle: string): DatabaseSync {
     }
 
     db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('app', ?)").run(APP_MARKER)
+    // Jedes Wiki hat einen Admin; anfangs mit dem Passwort „admin“
+    const users = db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }
+    if (users.n === 0) {
+      db.prepare("INSERT INTO users (username, role, password_hash) VALUES (?, 'admin', ?)").run(
+        DEFAULT_ADMIN.username,
+        hashPassword(DEFAULT_ADMIN.password)
+      )
+    }
     const root = db.prepare('SELECT id FROM articles WHERE parent_id IS NULL').get()
     if (!root) {
       db.prepare("INSERT INTO articles (parent_id, title, approved_at) VALUES (NULL, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))").run(

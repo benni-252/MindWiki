@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type Key
 import { impactChain, impactStatus, type Impact, type ImpactStatus } from '../../../shared/impact'
 import type { ArticleSummary } from '../../../shared/types'
 import { useWiki } from '../store'
-import { formatWhen, impactOf, indexTree, isInSubtree, isUnseen } from '../treeUtils'
+import { formatWhen, impactOf, indexTree, isDeletedUser, isInSubtree, isUnseen } from '../treeUtils'
 import { ArticleNode, focusMap, type ArticleFlowNode } from './ArticleNode'
 import { ContextMenu } from './ContextMenu'
 import { estimateWidth, layoutMindMap, type LayoutArticle, type LayoutNode } from './layout'
@@ -151,7 +151,11 @@ export function MindMap(): React.JSX.Element {
               ? '\nDein Entwurf – die anderen sehen noch den alten Stand'
               : `\nÄnderungen von ${article.draftBy ?? '?'} warten auf Freigabe`
             : ''
-      const tooltip = nodeTooltip(article, impact, byId) + approvalNote
+      const authorDeleted = isDeletedUser(tree, article.createdBy)
+      const tooltip =
+        nodeTooltip(article, impact, byId) +
+        approvalNote +
+        (authorDeleted ? `\nAutor „${article.createdBy}“ wurde gelöscht` : '')
       result.push({
         id: key,
         type: 'article',
@@ -176,7 +180,8 @@ export function MindMap(): React.JSX.Element {
               ? `${tooltip}\nNeu geändert von ${article.lastOtherChangeBy ?? 'jemand anderem'} (${formatWhen(article.lastOtherChangeAt)})`
               : tooltip,
           unseen,
-          approval
+          approval,
+          authorDeleted
         }
       })
     }

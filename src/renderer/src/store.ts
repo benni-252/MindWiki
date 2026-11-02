@@ -1,10 +1,21 @@
 import { create } from 'zustand'
 import { findTemplate } from '../../shared/templates'
-import type { DbInfo, TreeData } from '../../shared/types'
+import type { DbInfo, LoginInfo, Role, Session, TreeData, UpdateState } from '../../shared/types'
 import { errorMessage, flushPending, hasPending, wiki } from './api'
 import { countSubtree, impactOf, indexTree, pathTo, type SeenState } from './treeUtils'
 
-export type DialogKind = 'search' | 'trash' | 'outages' | 'changes' | 'user-name' | 'approvals' | 'shortcuts' | 'about' | null
+export type DialogKind =
+  | 'search'
+  | 'trash'
+  | 'outages'
+  | 'changes'
+  | 'users'
+  | 'change-password'
+  | 'approvals'
+  | 'update'
+  | 'shortcuts'
+  | 'about'
+  | null
 
 export interface ConfirmOptions {
   title: string
@@ -43,6 +54,11 @@ interface State {
   userName: string
   /** Wann welcher Artikel zuletzt angesehen wurde (für „neu geändert“) */
   seen: SeenState | null
+  /** Neue Version auf GitHub? */
+  update: UpdateState
+  /** Angemeldeter Benutzer; null → Anmeldemaske */
+  session: Session | null
+  loginInfo: LoginInfo | null
 
   loadAll(): Promise<void>
   loadTree(): Promise<void>
@@ -79,7 +95,11 @@ interface State {
   reloadArticle(): void
   markSeen(id: number): void
   markAllSeen(): void
-  setUserName(name: string): Promise<void>
+  login(username: string, password: string): Promise<void>
+  logout(): Promise<void>
+  refreshLoginInfo(): Promise<void>
+  /** Mindestens diese Rolle? (author < editor < admin) */
+  can(role: Role): boolean
   /** Ein anderer Rechner hat die Wiki-Datei geändert */
   externalChange(): Promise<void>
   startDraft(id: number): Promise<void>
@@ -87,6 +107,7 @@ interface State {
   approve(id: number): Promise<void>
   reject(id: number, reason: string | null): Promise<void>
   setApprovalRequired(on: boolean): Promise<void>
+  setUpdate(update: UpdateState): void
 }
 
 function readPref(key: string, fallback: boolean): boolean {
@@ -109,7 +130,10 @@ function writePref(key: string, value: boolean): void {
 let toastId = 0
 let nonce = 0
 
+/** Gesehen-Stand pro Datei und Benutzer (mehrere Personen können denselben Rechner nutzen). */
 const seenKey = (dbPath: string): string => `mindwiki.seen:${dbPath}`
+
+const RANK: Record<Role, number> = { author: 1, editor: 2, admin: 3 }
 
 function loadSeen(dbPath: string): SeenState {
   try {
@@ -149,7 +173,10 @@ export const useWiki = create<State>((set, get) => {
       await get().loadTree()
       return result
     } catch (err) {
-      get().toast(errorMessage(err), 'error')
+      const message = errorMessage(err)
+      get().toast(message, 'error')
+      // Abgemeldet oder Benutzer gelöscht → zurück zur Anmeldung
+      if (/anmelden/i.test(message)) void get().loadAll()
       return undefined
     }
   }
@@ -202,14 +229,26 @@ export const useWiki = create<State>((set, get) => {
     articleVersion: 0,
     userName: '',
     seen: null,
+    session: null,
+    loginInfo: null,
+    update: { status: 'idle', current: __APP_VERSION__ },
 
     async loadAll() {
-      const [tree, dbInfo, userName] = await Promise.all([wiki.getTree(), wiki.getDbInfo(), wiki.getUserName()])
+      const [dbInfo, loginInfo, update] = await Promise.all([wiki.getDbInfo(), wiki.getLoginInfo(), wiki.getUpdateState()])
+      if (!loginInfo.session) {
+        set({ dbInfo, loginInfo, update, session: null, tree: null, dialog: null, panelOpen: false, userName: '' })
+        return
+      }
+      const tree = await wiki.getTree()
+      const userName = loginInfo.session.username
       set({
+        update,
         tree,
         dbInfo,
+        loginInfo,
+        session: loginInfo.session,
         userName,
-        seen: loadSeen(dbInfo.path),
+        seen: loadSeen(`${dbInfo.path}|${userName.toLowerCase()}`),
         selectedId: tree.rootId,
         panelOpen: false,
         panelMax: false,
@@ -416,16 +455,27 @@ export const useWiki = create<State>((set, get) => {
       set({ seen: next })
     },
 
-    async setUserName(name) {
-      try {
-        const userName = await wiki.setUserName(name)
-        set({ userName })
-        await get().loadTree()
-        get().toast(`Deine Änderungen erscheinen jetzt als „${userName}“.`)
-      } catch (err) {
-        get().toast(errorMessage(err), 'error')
-      }
+    async login(username, password) {
+      await wiki.login(username, password)
+      await get().loadAll()
     },
+
+    async logout() {
+      await flushPending()
+      await wiki.logout()
+      await get().loadAll()
+    },
+
+    async refreshLoginInfo() {
+      set({ loginInfo: await wiki.getLoginInfo() })
+    },
+
+    can(role) {
+      const session = get().session
+      return !!session && RANK[session.role] >= RANK[role]
+    },
+
+    setUpdate: (update) => set({ update }),
 
     startDraft: (id) => decide(() => wiki.startDraft(id), null),
     discardDraft: (id) => decide(() => wiki.discardDraft(id), 'Entwurf verworfen.'),

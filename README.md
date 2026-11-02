@@ -13,9 +13,20 @@ Lokales Wiki als Mind Map: Artikel hängen in einem Baum (Hauptthema in der Mitt
 - **Herunterladen:** Die fertigen .exe-Dateien liegen auf GitHub unter **Releases** (rechts auf der Repo-Seite). Im Repository selbst sind sie absichtlich nicht enthalten (`dist/` steht in `.gitignore`), sie werden vom Workflow `Windows-Build` erzeugt – siehe [Windows-Programme auf GitHub bauen](#windows-programme-auf-github-bauen).
 - **Installieren:** `MindWiki-Setup-<Version>.exe` ausführen – oder ohne Installation `MindWiki-<Version>-portable.exe` starten.
   Die .exe ist nicht signiert; Windows SmartScreen fragt beim ersten Start nach („Weitere Informationen“ → „Trotzdem ausführen“).
+- **Updates:** Die installierte Version prüft beim Start und alle paar Stunden, ob es auf GitHub eine neue Version gibt. Dann erscheint oben „Update … verfügbar“; ein Klick lädt sie herunter und installiert sie mit einem kurzen Neustart (deine Daten bleiben erhalten). Von Hand: *Hilfe › Nach Updates suchen…*. Die portable Version zeigt nur den Hinweis und öffnet die Download-Seite. Dafür muss das GitHub-Repository öffentlich sein.
 - **Daten:** standardmäßig `Dokumente\MindWiki\Wiki.db`. Über *Datei › Neues Wiki / Wiki öffnen* kannst du weitere Wikis anlegen bzw. wechseln.
 - **Sicherungen:** beim Start höchstens einmal pro Tag automatisch in `Sicherungen\` neben der Datenbank (die letzten 5 bleiben). Manuell: *Datei › Sicherung erstellen* (Strg+Umschalt+S).
 - **Papierkorb:** Gelöschte Äste lassen sich unter *Bearbeiten › Papierkorb* wiederherstellen.
+
+### Anmeldung, Benutzer und Rollen
+
+- Beim Start meldet man sich mit **Benutzername und Passwort** an. Die Benutzer stehen in der Wiki-Datei und gelten damit für alle, die sie benutzen.
+- Jedes Wiki hat den **Admin** `admin`, anfangs mit dem Passwort `admin`. Solange es nicht geändert ist, erinnert ein Hinweis daran (oder: Benutzer-Menü oben rechts › *Passwort ändern*).
+- Nur der Admin legt Benutzer an, ändert Rollen, setzt Passwörter zurück und löscht Benutzer (Benutzer-Menü › *Benutzer verwalten*). Außerdem schaltet nur er die Freigabe-Pflicht ein oder aus.
+- **Rollen:** *Mitarbeiter* verfassen und ändern Artikel. *Bearbeiter* dürfen zusätzlich freigeben, ablehnen und den Papierkorb endgültig leeren. Freigeben dürfen sie nie ihre eigenen Artikel oder Änderungen.
+- **Gelöschte Benutzer** können sich nicht mehr anmelden. Ihre Artikel bleiben erhalten und sind gekennzeichnet (Symbol am Knoten, Hinweis „Verfasst von … – dieser Benutzer wurde gelöscht“, durchgestrichener Name im Verlauf). Der Name kann nicht neu vergeben werden.
+- Die Rechte prüft der Hauptprozess, Passwörter werden nur als Hash gespeichert. Aber: Die Anmeldung schützt vor Versehen im Team, nicht die Datei selbst – wer die Datei direkt öffnen kann, kommt an den Inhalt. Das Admin-Passwort gut aufbewahren, es lässt sich nicht wiederherstellen.
+- Im Beispiel-Wiki gibt es die Zugänge `admin`/`admin`, `Anna`/`demo` (Bearbeiter) und `Ben`/`demo` (Mitarbeiter).
 
 ### Gemeinsam mit anderen nutzen
 
@@ -23,18 +34,19 @@ Lokales Wiki als Mind Map: Artikel hängen in einem Baum (Hauptthema in der Mitt
 - **Verlauf:** Unten in jedem Artikel steht, wer wann was geändert hat – Titel, Text, Steckbrief-Felder, Abläufe, Abhängigkeiten, Störungen, Verschieben und Papierkorb. Werte von Passwort-Feldern landen nicht im Verlauf.
 - **Frühere Textfassungen:** Bei Textänderungen zeigt „Text davor ansehen“, wie der Text vorher aussah; „Diese Fassung wiederherstellen“ holt ihn zurück. Je Artikel bleiben die letzten 30 Fassungen erhalten.
 - **Neu von anderen:** Hat jemand anderes einen Artikel geändert, seit du ihn zuletzt angesehen hast, trägt der Knoten einen blauen Punkt und das Uhr-Symbol oben zeigt die Anzahl. Ein Klick (oder Strg+Umschalt+H) öffnet *Letzte Änderungen*.
-- **Dein Name:** Änderungen erscheinen mit dem Windows-Benutzernamen; ändern über *Datei › Mein Name im Verlauf*.
+- **Name im Verlauf:** Änderungen erscheinen mit dem Benutzernamen, mit dem man angemeldet ist.
 - Ein- und Ausklappen von Ästen ist in der Datei gespeichert und gilt damit für alle.
 
 ### Freigaben (Vier-Augen-Prinzip)
 
-Einschalten unter *Datei › Freigaben…* (gilt für alle, die die Wiki-Datei benutzen):
+Der Admin schaltet sie unter *Freigaben einstellen* im Benutzer-Menü ein (gilt für alle, die die Wiki-Datei benutzen):
 
-- **Neue Artikel** sind zunächst Entwürfe: in der Mind Map gestrichelt, im Artikel steht „wartet auf Freigabe“. Die Autorin kann sie weiter bearbeiten; freigeben oder ablehnen kann nur jemand anderes. Abgelehnte Artikel landen im Papierkorb.
+- **Neue Artikel** sind zunächst Entwürfe: in der Mind Map gestrichelt, im Artikel steht „wartet auf Freigabe“. Die Autorin kann sie weiter bearbeiten; freigeben oder ablehnen kann ein Bearbeiter oder der Admin, aber nicht die Autorin selbst. Abgelehnte Artikel landen im Papierkorb.
 - **Änderungen an freigegebenen Artikeln** beginnen mit „Bearbeiten“: Man arbeitet an einem eigenen Entwurf (Text, Titel, Symbol, Steckbrief, Abläufe), die anderen sehen so lange den freigegebenen Stand. Ein Stift-Symbol am Knoten zeigt den offenen Vorschlag. Andere sehen mit „Änderungen ansehen“ den Vergleich (rot bisher, grün neu) und können freigeben oder mit Begründung ablehnen. Pro Artikel gibt es höchstens einen offenen Vorschlag.
-- Das Schild-Symbol oben zählt, was auf deine Freigabe wartet, und listet auch deine eigenen offenen Entwürfe.
+- Text, der noch nicht freigegeben ist, ist markiert: bei neuen Artikeln der ganze Text, im eigenen Entwurf die geänderten Absätze (gelb).
+- Oben steht „X Freigaben offen“, sobald etwas offen ist – orange, wenn etwas auf deine Freigabe wartet, blau, wenn nur deine eigenen Entwürfe auf andere warten. Ein Klick zeigt die Liste.
 - Sofort und ohne Freigabe gehen weiterhin: Störung melden/beheben, Abhängigkeiten, Abläufe abhaken und protokollieren, Verschieben, Papierkorb.
-- Beim Ausschalten werden alle offenen Entwürfe übernommen. Wer freigeben darf, wird am Namen im Verlauf erkannt – das ist eine Absprache im Team, kein Schutz mit Passwort.
+- Beim Ausschalten werden alle offenen Entwürfe übernommen. Ein- und ausschalten kann nur der Admin (Benutzer-Menü › *Freigaben einstellen*).
 
 ### IT-Funktionen
 

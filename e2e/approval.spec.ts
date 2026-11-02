@@ -17,21 +17,15 @@ test.afterAll(async () => {
 })
 
 test('Freigabe neuer Artikel und Änderungen nach dem Vier-Augen-Prinzip', async () => {
-  // Diese Person heißt in der App „Benjamin“
-  fs.mkdirSync(path.join(workDir, 'userData'), { recursive: true })
-  fs.writeFileSync(path.join(workDir, 'userData', 'settings.json'), JSON.stringify({ userName: 'Benjamin' }))
-  const { app, page } = await launch(workDir, 'Team.db')
+  // Der Admin hat Benjamin als Bearbeiter angelegt und die Freigabe-Pflicht eingeschaltet
+  fs.mkdirSync(workDir, { recursive: true })
+  const setup = new WikiStore(openDatabase(dbFile, 'Team'), 'admin')
+  setup.createUser('Benjamin', 'benjamin', 'editor')
+  setup.setApprovalRequired(true)
+  setup.db.close()
+  const { app, page } = await launch(workDir, 'Team.db', {}, { username: 'Benjamin', password: 'benjamin' })
   running = app
-
-  // Freigabe-Pflicht einschalten (Datei › Freigaben …)
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0].webContents.send('wiki:event', { type: 'menu', action: 'approvals' })
-  )
   const approvals = page.getByRole('dialog', { name: 'Freigaben' })
-  await approvals.getByRole('checkbox').click()
-  await page.getByRole('dialog', { name: 'Freigabe-Pflicht einschalten?' }).getByRole('button', { name: 'Einschalten' }).click()
-  await expect(page.locator('.toast', { hasText: 'Freigabe-Pflicht eingeschaltet.' })).toBeVisible()
-  await approvals.getByRole('button', { name: 'Fertig' }).click()
 
   // Neuer Artikel ist ein Entwurf; die Autorin darf ihn bearbeiten, aber nicht freigeben
   await addChild(page, 'Team', 'Firewall')
@@ -43,12 +37,18 @@ test('Freigabe neuer Artikel und Änderungen nach dem Vier-Augen-Prinzip', async
   await editor.click()
   await page.keyboard.type('Regel A erlaubt VPN.')
   await expect(page.locator('.save-status')).toHaveText('Gespeichert', { timeout: 5000 })
+  // Der ganze Text ist als nicht freigegeben markiert, oben wartet der eigene Entwurf
+  await expect(page.locator('.editor.unapproved-all .unapproved-label')).toHaveText('Text noch nicht freigegeben')
+  await expect(page.locator('.approval-pill.mine')).toHaveText('1 Freigabe offen')
+  await expect(page.locator('.approval-pill.mine')).toHaveAttribute('title', '1 eigener Entwurf wartet auf andere')
 
   // Ein Kollege gibt den Artikel an seinem Rechner frei
   colleague = new WikiStore(openDatabase(dbFile, 'Team'), 'Kollege')
   const fw = colleague.getTree().articles.find((a) => a.title === 'Firewall')!.id
   colleague.approve(fw)
   await expect(node(page, 'Firewall')).not.toHaveClass(/\bdraft\b/, { timeout: 8000 })
+  await expect(page.locator('.approval-pill')).toHaveCount(0)
+  await expect(page.locator('.editor.unapproved')).toHaveCount(0)
 
   // Ab jetzt nur noch über einen Entwurf änderbar
   await expect(page.locator('.approval-hint')).toBeVisible()
@@ -58,8 +58,12 @@ test('Freigabe neuer Artikel und Änderungen nach dem Vier-Augen-Prinzip', async
   await expect(editor).toHaveAttribute('contenteditable', 'true')
   await editor.click()
   await page.keyboard.press('End')
+  await expect(page.locator('.editor.unapproved-changes .unapproved-block')).toHaveCount(0)
   await page.keyboard.type(' Regel B sperrt Telnet.')
   await expect(page.locator('.save-status')).toHaveText('Gespeichert', { timeout: 5000 })
+  // Der geänderte Absatz ist markiert
+  await expect(page.locator('.editor.unapproved-changes .unapproved-block')).toHaveCount(1)
+  await expect(page.locator('.unapproved-block')).toContainText('Regel B sperrt Telnet.')
   const title = page.locator('.panel .article-title')
   await title.fill('Firewall Zentrale')
   await title.press('Enter')
@@ -80,9 +84,9 @@ test('Freigabe neuer Artikel und Änderungen nach dem Vier-Augen-Prinzip', async
 
   // Jetzt schlägt der Kollege eine Änderung vor: Zähler oben, Liste, Vergleich, Freigabe
   colleague.renameArticle(fw, 'Firewall Nord')
-  await expect(page.locator('.badge-approval')).toHaveText('1', { timeout: 8000 })
+  await expect(page.locator('.approval-pill.for-me')).toHaveText('1 Freigabe offen', { timeout: 8000 })
   await expect(node(page, 'Firewall Zentrale').locator('.mm-pending')).toBeVisible()
-  await page.locator('.has-approvals').click()
+  await page.locator('.approval-pill').click()
   await expect(approvals.locator('.approval-list li')).toContainText(['Firewall Zentrale'])
   await approvals.locator('.change-title', { hasText: 'Firewall Zentrale' }).click()
   const pending = page.locator('.approval-box.pending')
@@ -95,7 +99,7 @@ test('Freigabe neuer Artikel und Änderungen nach dem Vier-Augen-Prinzip', async
   await page.screenshot({ path: path.join(shots, 'freigabe-02-vergleich.png') })
   await diffDialog.getByRole('button', { name: 'Freigeben' }).click()
   await expect(node(page, 'Firewall Nord')).toBeVisible()
-  await expect(page.locator('.badge-approval')).toHaveCount(0)
+  await expect(page.locator('.approval-pill')).toHaveCount(0)
 
   // Neuer Artikel des Kollegen wird abgelehnt und landet im Papierkorb
   colleague.createArticle(colleague.rootId(), 'Testseite')

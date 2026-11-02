@@ -11,14 +11,33 @@ export function makeWorkDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'mindwiki-e2e-'))
 }
 
+export interface Login {
+  username: string
+  password: string
+}
+
+export const ADMIN: Login = { username: 'admin', password: 'admin' }
+
+/** Meldet sich in der Anmeldemaske an und wartet auf die Mind Map. */
+export async function login(page: Page, user: Login): Promise<void> {
+  const screen = page.locator('.login-screen')
+  await expect(screen).toBeVisible()
+  await screen.getByLabel('Benutzername').fill(user.username)
+  await screen.getByLabel('Passwort').fill(user.password)
+  await screen.getByRole('button', { name: 'Anmelden' }).click()
+  await expect(page.locator('.mm-node.depth-0')).toBeVisible()
+}
+
 /**
  * Startet die gebaute App (npm run build) mit der angegebenen Datenbank statt der echten.
  * Ohne `dbName` startet sie wie nach einer frischen Installation (Ordner über `extraEnv`).
+ * `user`: so anmelden (Standard: admin/admin); null bleibt in der Anmeldemaske.
  */
 export async function launch(
   workDir: string,
   dbName: string | null,
-  extraEnv: Record<string, string> = {}
+  extraEnv: Record<string, string> = {},
+  user: Login | null = ADMIN
 ): Promise<{ app: ElectronApplication; page: Page }> {
   const env: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) {
@@ -30,7 +49,8 @@ export async function launch(
   const app = await electron.launch({ args: [path.join(__dirname, '..', 'out', 'main', 'index.js')], env })
   const page = await app.firstWindow()
   await page.setViewportSize({ width: 1400, height: 860 })
-  await expect(page.locator('.mm-node.depth-0')).toBeVisible()
+  await expect(page.locator('.login-screen')).toBeVisible()
+  if (user) await login(page, user)
   return { app, page }
 }
 

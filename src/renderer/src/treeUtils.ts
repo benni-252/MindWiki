@@ -100,3 +100,10 @@ export function formatWhen(iso: string): string {
   if (day(d) === day(yesterday)) return `gestern, ${time}`
   return `${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}, ${time}`
 }
+
+/** Gehört der Name einem gelöschten Benutzer? */
+export function isDeletedUser(tree: TreeData | null, name: string | null | undefined): boolean {
+  if (!tree || !name) return false
+  const lower = name.toLowerCase()
+  return tree.deletedUsers.some((u) => u.toLowerCase() === lower)
+}
