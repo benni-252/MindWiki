@@ -2537,16 +2537,27 @@ input.fs-label::-webkit-calendar-picker-indicator {
 
 /* ---------- Beispiel-Wiki ---------- */
 
-.sample-bar {
+.notices {
   position: absolute;
   top: 12px;
   left: 12px;
   z-index: 6;
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  pointer-events: none;
+}
+.notices > * {
+  pointer-events: auto;
+}
+.notice-bar {
+  display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  max-width: calc(100% - 24px);
+  max-width: 100%;
   padding: 7px 10px 7px 12px;
   border: 1px solid var(--accent);
   border-radius: 10px;
@@ -2554,8 +2565,15 @@ input.fs-label::-webkit-calendar-picker-indicator {
   box-shadow: var(--shadow);
   font-size: 13px;
 }
-.sample-bar > svg {
+.notice-bar > svg {
   color: var(--accent);
+}
+.notice-bar.warning {
+  border-color: var(--warning);
+  background: color-mix(in srgb, var(--warning-soft) 92%, transparent);
+}
+.notice-bar.warning > svg {
+  color: var(--warning);
 }
 
 /* ---------- Freigaben-Anzeige, Updates, nicht freigegebener Text ---------- */
@@ -2624,4 +2642,193 @@ input.fs-label::-webkit-calendar-picker-indicator {
   border-left: 3px solid var(--warning);
   border-radius: 0 4px 4px 0;
   background: color-mix(in srgb, var(--warning) 14%, transparent);
+}
+
+/* ---------- Anmeldung und Benutzer ---------- */
+
+.login-screen {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 15%, var(--accent-soft), transparent 45%),
+    radial-gradient(circle at 85% 90%, color-mix(in srgb, var(--accent-soft) 70%, transparent), transparent 40%),
+    var(--bg);
+}
+.login-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(380px, 100%);
+  padding: 26px 28px 20px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.login-brand .brand-logo {
+  width: 40px;
+  height: 40px;
+}
+.login-brand h1 {
+  margin: 0;
+  font-size: 20px;
+}
+.login-brand p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.login-card label,
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.login-submit {
+  justify-content: center;
+  height: 36px;
+}
+.login-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+.login-hint {
+  margin: 0;
+  line-height: 1.55;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.login-links {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+}
+.login-links .link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.user-menu {
+  position: relative;
+}
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 13px;
+}
+.user-chip small {
+  color: var(--muted);
+}
+.user-chip:hover {
+  background: var(--surface-2);
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 14px;
+}
+.users-table th {
+  text-align: left;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 4px 6px;
+}
+.users-table td {
+  padding: 6px;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+}
+.users-table tr.deleted td {
+  color: var(--muted);
+}
+.users-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+.inline-form {
+  display: flex;
+  gap: 6px;
+}
+.inline-form .text-input {
+  height: 28px;
+  width: 150px;
+}
+.users-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.users-add-row .text-input {
+  flex: 1 1 130px;
+  width: auto;
+}
+
+.mm-author-deleted {
+  flex: none;
+  color: var(--muted);
+}
+.author-deleted-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 14px;
+  padding: 7px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.deleted-name {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.user-menu .menu.dropdown {
+  right: 0;
+  min-width: 220px;
+}
+.inline-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.approval-switch.disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+.login-hint svg {
+  vertical-align: -2px;
+  margin-right: 2px;
 }

@@ -405,6 +405,9 @@ export function ensureSampleWiki(file: string): string {
   try {
     const store = new WikiStore(db, 'Anna')
     fillSampleWiki(store)
+    // Zugänge für die Personen im Beispiel (Passwort jeweils „demo“)
+    store.createUser('Anna', 'demo', 'editor')
+    store.createUser('Ben', 'demo', 'author')
     db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('sample', '1')").run()
   } finally {
     db.close()

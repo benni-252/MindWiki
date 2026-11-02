@@ -1,13 +1,13 @@
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
-import { RPC_METHODS, type WikiRpc } from '../shared/types'
+import { RPC_METHODS, type Role, type WikiRpc } from '../shared/types'
 import { backupTo, NotAWikiError } from './db'
 import { ensureSampleWiki } from './sample'
 import { checkForUpdates, downloadUpdate, getUpdateState, installUpdate, openReleasePage } from './updater'
-import { defaultDbPath, sampleDbPath, saveSettings, userName } from './settings'
-import type { WikiStore } from './store'
-import { currentDbFile, currentStore, openWiki, wikiName } from './wiki'
+import { defaultDbPath, loadSettings, sampleDbPath, saveSettings } from './settings'
+import { WikiError, type WikiStore } from './store'
+import { currentDbFile, currentSession, currentStore, openWiki, setSession, wikiName } from './wiki'
 
 type FileOps =
   | 'getDbInfo'
@@ -23,11 +23,65 @@ type FileOps =
   | 'revealDb'
   | 'confirmClose'
   | 'getUserName'
-  | 'setUserName'
+  | 'getLoginInfo'
+  | 'login'
+  | 'logout'
+  | 'changePassword'
 
 // Bricht die Typprüfung, wenn WikiStore eine Datenmethode der API nicht (passend) anbietet.
 const storeImplementsRpc = (s: WikiStore): Omit<WikiRpc, FileOps> => s
 void storeImplementsRpc
+
+/** Ohne Anmeldung erlaubt: Datei wählen, Anmelden, Updates. */
+const PUBLIC = new Set<string>([
+  'getDbInfo',
+  'newDb',
+  'openDb',
+  'openSampleDb',
+  'revealDb',
+  'confirmClose',
+  'getLoginInfo',
+  'login',
+  'logout',
+  'getUserName',
+  'getUpdateState',
+  'checkForUpdates',
+  'downloadUpdate',
+  'installUpdate',
+  'openReleasePage'
+])
+
+/** Mindestrolle je Aktion; alles andere dürfen alle angemeldeten Benutzer (Mitarbeiter). */
+const REQUIRED_ROLE: Partial<Record<keyof WikiRpc, Role>> = {
+  approve: 'editor',
+  reject: 'editor',
+  purgeArticle: 'editor',
+  emptyTrash: 'editor',
+  setApprovalRequired: 'admin',
+  listUsers: 'admin',
+  createUser: 'admin',
+  setUserRole: 'admin',
+  resetPassword: 'admin',
+  deleteUser: 'admin'
+}
+const RANK: Record<Role, number> = { author: 1, editor: 2, admin: 3 }
+
+/** Prüft Anmeldung und Rolle; die Rolle wird jedes Mal frisch gelesen (ein Admin kann sie inzwischen geändert haben). */
+function authorize(name: keyof WikiRpc): void {
+  if (PUBLIC.has(name)) return
+  const session = currentSession()
+  if (!session) throw new WikiError('Bitte zuerst anmelden.')
+  const user = currentStore()
+    .listUsers()
+    .find((u) => u.username.toLowerCase() === session.username.toLowerCase())
+  if (!user || user.deleted) {
+    setSession(null)
+    throw new WikiError('Dein Benutzer wurde gelöscht oder gesperrt. Bitte neu anmelden.')
+  }
+  if (user.role !== session.role) setSession({ username: user.username, role: user.role })
+  const need = REQUIRED_ROLE[name]
+  if (need && RANK[user.role] < RANK[need]) throw new WikiError('Dafür fehlt dir die Berechtigung.')
+}
 
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024
 const DB_FILTERS = [{ name: 'MindWiki-Datenbank', extensions: ['db'] }]
@@ -133,12 +187,38 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
 
     revealDb: () => shell.showItemInFolder(currentDbFile()),
 
-    getUserName: () => userName(),
+    getUserName: () => currentSession()?.username ?? '',
 
-    setUserName: (name: string) => {
-      saveSettings({ userName: name.trim().slice(0, 60) || undefined })
-      currentStore().author = userName()
-      return userName()
+    getLoginInfo: () => {
+      const store = currentStore()
+      return {
+        session: currentSession(),
+        defaultAdminPassword: store.adminHasDefaultPassword(),
+        onlyAdmin: store.onlyAdmin(),
+        isSample: store.isSample(),
+        lastUser: loadSettings().lastUser ?? null
+      }
+    },
+
+    login: async (username: string, password: string) => {
+      const user = currentStore().verifyLogin(username, password)
+      if (!user) {
+        // kurze Pause erschwert das Durchprobieren von Passwörtern
+        await new Promise((resolve) => setTimeout(resolve, 600))
+        throw new WikiError('Benutzername oder Passwort stimmt nicht.')
+      }
+      const session = { username: user.username, role: user.role }
+      setSession(session)
+      saveSettings({ lastUser: user.username })
+      return session
+    },
+
+    logout: () => setSession(null),
+
+    changePassword: (oldPassword: string, newPassword: string) => {
+      const session = currentSession()
+      if (!session) throw new WikiError('Bitte zuerst anmelden.')
+      currentStore().changeOwnPassword(session.username, oldPassword, newPassword)
     },
 
     confirmClose: allowClose
@@ -146,6 +226,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
 
   for (const name of RPC_METHODS) {
     ipcMain.handle(`wiki:${name}`, (_event, ...args: unknown[]) => {
+      authorize(name)
       if (name in fileOps) {
         return (fileOps[name as FileOps] as (...a: unknown[]) => unknown)(...args)
       }

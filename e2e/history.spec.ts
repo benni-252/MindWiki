@@ -3,6 +3,7 @@ import path from 'node:path'
 import { openDatabase } from '../src/main/db'
 import { WikiStore } from '../src/main/store'
 import { addChild, launch, makeWorkDir, node, removeDir, shots } from './app'
+import fs from 'node:fs'
 
 const workDir = makeWorkDir()
 const dbFile = path.join(workDir, 'Team.db')
@@ -19,17 +20,14 @@ const textDoc = (text: string): string =>
   JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] })
 
 test('Verlauf und Änderungen von anderen an derselben Datei', async () => {
-  const { app, page } = await launch(workDir, 'Team.db')
+  // Benjamin ist als Benutzer im Wiki angelegt und meldet sich an
+  fs.mkdirSync(workDir, { recursive: true })
+  const setup = new WikiStore(openDatabase(dbFile, 'Team'), 'admin')
+  setup.createUser('Benjamin', 'benjamin', 'author')
+  setup.db.close()
+  const { app, page } = await launch(workDir, 'Team.db', {}, { username: 'Benjamin', password: 'benjamin' })
   running = app
-
-  // Eigenen Namen für den Verlauf festlegen
-  await page.getByTitle(/Letzte Änderungen/).click()
   const changes = page.getByRole('dialog', { name: 'Letzte Änderungen' })
-  await changes.getByRole('button', { name: /Du erscheinst als/ }).click()
-  const nameInput = page.getByRole('textbox', { name: 'Dein Name' })
-  await nameInput.fill('Benjamin')
-  await nameInput.press('Enter')
-  await expect(page.locator('.toast', { hasText: 'Deine Änderungen erscheinen jetzt als „Benjamin“.' })).toBeVisible()
 
   // Artikel mit Text anlegen
   await addChild(page, 'Team', 'Firewall')

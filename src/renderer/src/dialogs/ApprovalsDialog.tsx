@@ -6,10 +6,14 @@ import { formatWhen } from '../treeUtils'
 import { Modal } from './Modal'
 
 /** Offene Freigaben: was ich freigeben kann und was von mir noch wartet. */
-export function pendingApprovals(tree: TreeData, me: string): { forMe: ArticleSummary[]; mine: ArticleSummary[] } {
+export function pendingApprovals(
+  tree: TreeData,
+  me: string,
+  canApprove: boolean
+): { forMe: ArticleSummary[]; mine: ArticleSummary[] } {
   const isNew = (a: ArticleSummary): boolean => tree.approvalRequired && !a.approved
   const byOthers = (a: ArticleSummary): boolean =>
-    (isNew(a) && a.createdBy !== me) || (a.draftId != null && a.draftBy !== me)
+    canApprove && ((isNew(a) && a.createdBy !== me) || (a.draftId != null && a.draftBy !== me))
   const byMe = (a: ArticleSummary): boolean => (isNew(a) && a.createdBy === me) || (a.draftId != null && a.draftBy === me)
   return { forMe: tree.articles.filter(byOthers), mine: tree.articles.filter(byMe) }
 }
@@ -36,9 +40,12 @@ function Row({ article, onOpen }: { article: ArticleSummary; onOpen(id: number):
 export function ApprovalsDialog(): React.JSX.Element | null {
   const tree = useWiki((s) => s.tree)
   const userName = useWiki((s) => s.userName)
+  const session = useWiki((s) => s.session)
   const close = useCallback(() => useWiki.getState().setDialog(null), [])
   if (!tree) return null
-  const { forMe, mine } = pendingApprovals(tree, userName)
+  const canApprove = session?.role === 'editor' || session?.role === 'admin'
+  const isAdmin = session?.role === 'admin'
+  const { forMe, mine } = pendingApprovals(tree, userName, canApprove)
   const open = (id: number): void => {
     close()
     void useWiki.getState().reveal(id)
@@ -80,21 +87,21 @@ export function ApprovalsDialog(): React.JSX.Element | null {
         </button>
       }
     >
-      <label className="approval-switch">
-        <input type="checkbox" checked={tree.approvalRequired} onChange={() => void toggle()} />
+      <label className={`approval-switch ${isAdmin ? '' : 'disabled'}`}>
+        <input type="checkbox" checked={tree.approvalRequired} disabled={!isAdmin} onChange={() => void toggle()} />
         <span>
           <strong>Neue Artikel und Änderungen müssen freigegeben werden</strong>
           <small>
-            Freigeben kann nur jemand anderes als die Person, die den Artikel angelegt oder geändert hat. Gilt für alle,
-            die diese Wiki-Datei benutzen. Störungen melden, Abhängigkeiten und das Abhaken von Abläufen gehen weiterhin
-            sofort.
+            Freigeben dürfen Bearbeiter und der Admin – aber nie ihre eigenen Artikel oder Änderungen. Gilt für alle, die
+            diese Wiki-Datei benutzen. Störungen melden, Abhängigkeiten und das Abhaken von Abläufen gehen weiterhin
+            sofort.{!isAdmin && ' Ein- und ausschalten kann nur der Admin.'}
           </small>
         </span>
       </label>
       {(tree.approvalRequired || forMe.length + mine.length > 0) && (
         <>
-          <h4 className="change-day">Wartet auf deine Freigabe ({forMe.length})</h4>
-          {forMe.length === 0 ? (
+          {canApprove && <h4 className="change-day">Wartet auf deine Freigabe ({forMe.length})</h4>}
+          {!canApprove ? null : forMe.length === 0 ? (
             <p className="muted small">Nichts offen.</p>
           ) : (
             <ul className="approval-list">

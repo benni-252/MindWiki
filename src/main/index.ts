@@ -46,8 +46,10 @@ function buildMenu(): void {
         item('Sicherung erstellen…', 'backup-db', 'CmdOrCtrl+Shift+S'),
         item('Speicherort im Explorer zeigen', 'reveal-db'),
         { type: 'separator' },
-        item('Mein Name im Verlauf…', 'user-name'),
         item('Freigaben…', 'approvals'),
+        item('Benutzer verwalten…', 'users'),
+        item('Passwort ändern…', 'change-password'),
+        item('Abmelden', 'logout'),
         { type: 'separator' },
         { role: 'quit', label: 'Beenden' }
       ]

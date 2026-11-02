@@ -15,6 +15,8 @@ import {
   type DraftDiff,
   type LinkEdge,
   type RecentChange,
+  type Role,
+  type UserInfo,
   type RunSnapshotItem,
   type SaveResult,
   type SearchHit,
@@ -23,6 +25,7 @@ import {
 } from '../shared/types'
 import { diffLines } from '../shared/diff'
 import { docText, extractArticleLinks } from './links'
+import { DEFAULT_ADMIN, hashPassword, verifyPassword } from './passwords'
 
 type Row = Record<string, unknown>
 
@@ -555,7 +558,17 @@ export class WikiStore {
          JOIN articles b ON b.id = d.depends_on_id
         WHERE a.deleted_at IS NULL AND b.deleted_at IS NULL`
     ).map((r): DependencyEdge => ({ articleId: r.article_id as number, dependsOnId: r.depends_on_id as number }))
-    return { rootId: this.rootId(), articles, links, dependencies, approvalRequired: this.approvalRequired() }
+    const deletedUsers = this.all<{ username: string }>('SELECT username FROM users WHERE deleted_at IS NOT NULL').map(
+      (u) => u.username
+    )
+    return {
+      rootId: this.rootId(),
+      articles,
+      links,
+      dependencies,
+      approvalRequired: this.approvalRequired(),
+      deletedUsers
+    }
   }
 
   getArticle(id: number): Article | null {
@@ -957,6 +970,98 @@ export class WikiStore {
       docText(change.old_content),
       `Text auf die Fassung vor der Änderung von ${change.author} (${formatStamp(change.at)}) zurückgesetzt`
     )
+  }
+
+  // ---------- Benutzer ----------
+
+  private toUser(r: Row): UserInfo {
+    return {
+      id: r.id as number,
+      username: r.username as string,
+      role: r.role as Role,
+      createdAt: r.created_at as string,
+      deleted: r.deleted_at != null
+    }
+  }
+
+  listUsers(): UserInfo[] {
+    return this.all<Row>(
+      `SELECT id, username, role, created_at, deleted_at FROM users
+        ORDER BY deleted_at IS NOT NULL, role = 'admin' DESC, username COLLATE NOCASE`
+    ).map((r) => this.toUser(r))
+  }
+
+  /** Prüft Benutzername und Passwort; gelöschte Benutzer können sich nicht mehr anmelden. */
+  verifyLogin(username: string, password: string): UserInfo | null {
+    const row = this.get<Row>('SELECT * FROM users WHERE username = ? AND deleted_at IS NULL', username.trim())
+    if (!row || !verifyPassword(password, row.password_hash as string)) return null
+    return this.toUser(row)
+  }
+
+  /** Hat der Admin noch das Start-Passwort? */
+  adminHasDefaultPassword(): boolean {
+    return this.verifyLogin(DEFAULT_ADMIN.username, DEFAULT_ADMIN.password) != null
+  }
+
+  onlyAdmin(): boolean {
+    return (this.get<{ n: number }>("SELECT COUNT(*) AS n FROM users WHERE role <> 'admin'")?.n ?? 0) === 0
+  }
+
+  private requireUser(id: number): UserInfo {
+    const row = this.get<Row>('SELECT * FROM users WHERE id = ?', id)
+    if (!row) throw new WikiError('Benutzer nicht gefunden.')
+    return this.toUser(row)
+  }
+
+  private checkPassword(password: string): void {
+    if (password.length < 4) throw new WikiError('Das Passwort muss mindestens 4 Zeichen lang sein.')
+  }
+
+  createUser(username: string, password: string, role: Role): number {
+    const name = username.trim()
+    if (!/^[\p{L}\p{N}._-]{2,40}$/u.test(name)) {
+      throw new WikiError('Der Benutzername braucht 2–40 Zeichen: Buchstaben, Ziffern, Punkt, Minus oder Unterstrich.')
+    }
+    if (role !== 'author' && role !== 'editor') throw new WikiError('Unbekannte Rolle.')
+    this.checkPassword(password)
+    const existing = this.get<{ deleted_at: string | null }>('SELECT deleted_at FROM users WHERE username = ?', name)
+    if (existing) {
+      throw new WikiError(
+        existing.deleted_at
+          ? `„${name}“ gehörte einem gelöschten Benutzer und kann nicht neu vergeben werden.`
+          : `Den Benutzer „${name}“ gibt es schon.`
+      )
+    }
+    return this.run('INSERT INTO users (username, role, password_hash) VALUES (?, ?, ?)', name, role, hashPassword(password))
+  }
+
+  setUserRole(id: number, role: Role): void {
+    const user = this.requireUser(id)
+    if (user.role === 'admin') throw new WikiError('Die Rolle des Admins kann nicht geändert werden.')
+    if (user.deleted) throw new WikiError('Der Benutzer ist gelöscht.')
+    if (role !== 'author' && role !== 'editor') throw new WikiError('Unbekannte Rolle.')
+    this.run('UPDATE users SET role = ? WHERE id = ?', role, id)
+  }
+
+  resetPassword(id: number, password: string): void {
+    const user = this.requireUser(id)
+    if (user.deleted) throw new WikiError('Der Benutzer ist gelöscht.')
+    this.checkPassword(password)
+    this.run('UPDATE users SET password_hash = ? WHERE id = ?', hashPassword(password), id)
+  }
+
+  changeOwnPassword(username: string, oldPassword: string, newPassword: string): void {
+    const user = this.verifyLogin(username, oldPassword)
+    if (!user) throw new WikiError('Das bisherige Passwort stimmt nicht.')
+    this.resetPassword(user.id, newPassword)
+  }
+
+  /** Löscht einen Benutzer. Seine Artikel bleiben und werden als „Autor gelöscht“ gekennzeichnet. */
+  deleteUser(id: number): void {
+    const user = this.requireUser(id)
+    if (user.role === 'admin') throw new WikiError('Der Admin kann nicht gelöscht werden.')
+    if (user.deleted) return
+    this.run('UPDATE users SET deleted_at = ? WHERE id = ?', this.now(), id)
   }
 
   // ---------- Papierkorb ----------

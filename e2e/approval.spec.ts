@@ -17,21 +17,15 @@ test.afterAll(async () => {
 })
 
 test('Freigabe neuer Artikel und Änderungen nach dem Vier-Augen-Prinzip', async () => {
-  // Diese Person heißt in der App „Benjamin“
-  fs.mkdirSync(path.join(workDir, 'userData'), { recursive: true })
-  fs.writeFileSync(path.join(workDir, 'userData', 'settings.json'), JSON.stringify({ userName: 'Benjamin' }))
-  const { app, page } = await launch(workDir, 'Team.db')
+  // Der Admin hat Benjamin als Bearbeiter angelegt und die Freigabe-Pflicht eingeschaltet
+  fs.mkdirSync(workDir, { recursive: true })
+  const setup = new WikiStore(openDatabase(dbFile, 'Team'), 'admin')
+  setup.createUser('Benjamin', 'benjamin', 'editor')
+  setup.setApprovalRequired(true)
+  setup.db.close()
+  const { app, page } = await launch(workDir, 'Team.db', {}, { username: 'Benjamin', password: 'benjamin' })
   running = app
-
-  // Freigabe-Pflicht einschalten (Datei › Freigaben …)
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0].webContents.send('wiki:event', { type: 'menu', action: 'approvals' })
-  )
   const approvals = page.getByRole('dialog', { name: 'Freigaben' })
-  await approvals.getByRole('checkbox').click()
-  await page.getByRole('dialog', { name: 'Freigabe-Pflicht einschalten?' }).getByRole('button', { name: 'Einschalten' }).click()
-  await expect(page.locator('.toast', { hasText: 'Freigabe-Pflicht eingeschaltet.' })).toBeVisible()
-  await approvals.getByRole('button', { name: 'Fertig' }).click()
 
   // Neuer Artikel ist ein Entwurf; die Autorin darf ihn bearbeiten, aber nicht freigeben
   await addChild(page, 'Team', 'Firewall')

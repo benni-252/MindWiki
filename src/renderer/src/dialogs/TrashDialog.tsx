@@ -8,6 +8,7 @@ import { Modal } from './Modal'
 export function TrashDialog(): React.JSX.Element {
   const [entries, setEntries] = useState<TrashEntry[] | null>(null)
   const close = useCallback(() => useWiki.getState().setDialog(null), [])
+  const canPurge = useWiki((s) => s.session?.role === 'editor' || s.session?.role === 'admin')
 
   const reload = useCallback(async () => {
     try {
@@ -64,9 +65,11 @@ export function TrashDialog(): React.JSX.Element {
       wide
       footer={
         <>
-          <button className="btn btn-danger" disabled={!entries?.length} onClick={() => void empty()}>
-            Papierkorb leeren
-          </button>
+          {canPurge && (
+            <button className="btn btn-danger" disabled={!entries?.length} onClick={() => void empty()}>
+              Papierkorb leeren
+            </button>
+          )}
           <button className="btn btn-primary" onClick={close}>
             Fertig
           </button>
@@ -89,9 +92,11 @@ export function TrashDialog(): React.JSX.Element {
               <button className="btn btn-small" onClick={() => void restore(e)}>
                 <RotateCcw size={14} /> Wiederherstellen
               </button>
-              <button className="icon-btn small danger" title="Endgültig löschen" onClick={() => void purge(e)}>
-                <Trash2 size={15} />
-              </button>
+              {canPurge && (
+                <button className="icon-btn small danger" title="Endgültig löschen" onClick={() => void purge(e)}>
+                  <Trash2 size={15} />
+                </button>
+              )}
             </li>
           ))}
         </ul>

@@ -1,9 +1,9 @@
-import { PenLine } from 'lucide-react'
+import { UserRound } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import type { RecentChange } from '../../../shared/types'
 import { errorMessage, wiki } from '../api'
 import { useWiki } from '../store'
-import { formatWhen, seenAt, unseenArticles } from '../treeUtils'
+import { formatWhen, isDeletedUser, seenAt, unseenArticles } from '../treeUtils'
 import { Modal } from './Modal'
 
 function dayLabel(iso: string): string {
@@ -52,9 +52,9 @@ export function ChangesDialog(): React.JSX.Element | null {
       wide
       footer={
         <>
-          <button className="btn btn-small footer-left" onClick={() => useWiki.getState().setDialog('user-name')}>
-            <PenLine size={13} /> Du erscheinst als „{userName}“
-          </button>
+          <span className="footer-left muted small inline-icon">
+            <UserRound size={13} /> Angemeldet als {userName}
+          </span>
           <button className="btn" disabled={newCount === 0} onClick={() => useWiki.getState().markAllSeen()}>
             Alle als gesehen markieren
           </button>
@@ -92,7 +92,8 @@ export function ChangesDialog(): React.JSX.Element | null {
                 </button>
                 {c.deleted && <small className="muted">(im Papierkorb)</small>}
                 <span className="change-meta">
-                  {c.author} · {formatWhen(c.at)}
+                  <span className={isDeletedUser(tree, c.author) ? 'deleted-name' : ''}>{c.author}</span> ·{' '}
+                  {formatWhen(c.at)}
                 </span>
               </div>
               <div className="change-summary">{c.summary}</div>

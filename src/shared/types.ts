@@ -71,6 +71,8 @@ export interface TreeData {
   dependencies: DependencyEdge[]
   /** Neue Artikel und Änderungen müssen von jemand anderem freigegeben werden */
   approvalRequired: boolean
+  /** Namen gelöschter Benutzer – ihre Artikel werden gekennzeichnet */
+  deletedUsers: string[]
 }
 
 /** Unterschiede zwischen einem freigegebenen Artikel und dem Änderungsvorschlag dazu. */
@@ -166,6 +168,35 @@ export interface DbInfo {
   isSample: boolean
 }
 
+/** admin: verwaltet Benutzer · editor (Bearbeiter): verfasst und gibt frei · author (Mitarbeiter): verfasst */
+export type Role = 'admin' | 'editor' | 'author'
+
+export const ROLE_LABEL: Record<Role, string> = { admin: 'Admin', editor: 'Bearbeiter', author: 'Mitarbeiter' }
+
+export interface UserInfo {
+  id: number
+  username: string
+  role: Role
+  createdAt: string
+  deleted: boolean
+}
+
+export interface Session {
+  username: string
+  role: Role
+}
+
+/** Was die Anmeldemaske braucht */
+export interface LoginInfo {
+  session: Session | null
+  /** Admin hat noch das Start-Passwort „admin“ */
+  defaultAdminPassword: boolean
+  /** Es gibt außer dem Admin noch niemanden (frisches Wiki) */
+  onlyAdmin: boolean
+  isSample: boolean
+  lastUser: string | null
+}
+
 /** Stand der Update-Prüfung (GitHub-Releases). */
 export interface UpdateState {
   status: 'idle' | 'checking' | 'current' | 'available' | 'downloading' | 'ready' | 'error' | 'unsupported'
@@ -214,9 +245,18 @@ export interface WikiRpc {
   /** Text (TipTap-JSON) vor einer Textänderung */
   getTextVersion(changeId: number): string | null
   restoreTextVersion(changeId: number): void
-  /** Name, unter dem die eigenen Änderungen im Verlauf erscheinen */
+  /** Name des angemeldeten Benutzers */
   getUserName(): string
-  setUserName(name: string): string
+
+  getLoginInfo(): LoginInfo
+  login(username: string, password: string): Promise<Session>
+  logout(): void
+  changePassword(oldPassword: string, newPassword: string): void
+  listUsers(): UserInfo[]
+  createUser(username: string, password: string, role: Role): number
+  setUserRole(id: number, role: Role): void
+  resetPassword(id: number, password: string): void
+  deleteUser(id: number): void
 
   /** Entwurf zu einem freigegebenen Artikel beginnen (oder den eigenen weiterführen); liefert seine ID */
   startDraft(id: number): number
@@ -293,7 +333,15 @@ export const RPC_METHODS = [
   'getTextVersion',
   'restoreTextVersion',
   'getUserName',
-  'setUserName',
+  'getLoginInfo',
+  'login',
+  'logout',
+  'changePassword',
+  'listUsers',
+  'createUser',
+  'setUserRole',
+  'resetPassword',
+  'deleteUser',
   'startDraft',
   'discardDraft',
   'approve',
@@ -352,7 +400,9 @@ export type MenuAction =
   | 'trash'
   | 'outages'
   | 'changes'
-  | 'user-name'
+  | 'logout'
+  | 'change-password'
+  | 'users'
   | 'approvals'
   | 'sample-db'
   | 'check-updates'

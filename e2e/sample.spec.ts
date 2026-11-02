@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
-import { launch, makeWorkDir, node, removeDir, shots } from './app'
+import { launch, login, makeWorkDir, node, removeDir, shots } from './app'
 
 const workDir = makeWorkDir()
 const documents = path.join(workDir, 'Dokumente')
@@ -14,9 +14,13 @@ test.afterAll(async () => {
 
 test('Beispiel-Wiki beim ersten Start und über das Hilfe-Menü', async () => {
   // Frische Installation: noch kein eigenes Wiki → das Beispiel erscheint
-  let { app, page } = await launch(workDir, null, { MINDWIKI_DOCUMENTS: documents })
+  let { app, page } = await launch(workDir, null, { MINDWIKI_DOCUMENTS: documents }, null)
   running = app
-  await expect(page.locator('.sample-bar')).toContainText('Beispiel-Wiki')
+  await expect(page.locator('.login-hint')).toContainText('Beispiel-Zugänge')
+  await page.screenshot({ path: path.join(shots, 'anmeldung-beispiel.png') })
+  await login(page, { username: 'Anna', password: 'demo' })
+  await expect(page.locator('.user-chip')).toContainText('Anna')
+  await expect(page.locator('.notice-bar')).toContainText('Beispiel-Wiki')
   await expect(node(page, 'SRV-SQL01')).toHaveClass(/\boutage\b/)
   await expect(node(page, 'Warenwirtschaft')).toHaveClass(/\baffected\b/)
   await expect(node(page, 'Dienstleister').locator('.mm-toggle.collapsed')).toHaveText('+1')
@@ -47,12 +51,13 @@ test('Beispiel-Wiki beim ersten Start und über das Hilfe-Menü', async () => {
   ;({ app, page } = await launch(workDir, 'Eigenes.db', { MINDWIKI_DOCUMENTS: documents }))
   running = app
   await expect(node(page, 'Eigenes')).toBeVisible()
-  await expect(page.locator('.sample-bar')).toHaveCount(0)
+  await expect(page.locator('.notice-bar', { hasText: 'Beispiel-Wiki' })).toHaveCount(0)
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].webContents.send('wiki:event', { type: 'menu', action: 'sample-db' })
   )
-  await expect(page.locator('.toast', { hasText: 'Wiki „Beispiel-Wiki“ geöffnet.' })).toBeVisible()
-  await expect(page.locator('.sample-bar')).toBeVisible()
+  // Andere Datei → neu anmelden
+  await login(page, { username: 'Ben', password: 'demo' })
+  await expect(page.locator('.notice-bar', { hasText: 'Beispiel-Wiki' })).toBeVisible()
   await expect(node(page, 'SRV-SQL01')).toBeVisible()
   await expect(page.locator('.toast.error')).toHaveCount(0)
   await app.close()

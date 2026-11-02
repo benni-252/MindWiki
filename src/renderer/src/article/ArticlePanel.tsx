@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, Maximize2, Minimize2, PenLine, Shapes, TriangleAlert, X } from 'lucide-react'
+import { BookOpen, ChevronRight, Maximize2, Minimize2, PenLine, Shapes, TriangleAlert, UserX, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TEMPLATES } from '../../../shared/templates'
 import type { Article, ArticleField } from '../../../shared/types'
@@ -6,7 +6,7 @@ import { errorMessage, wiki } from '../api'
 import { ChecklistSection } from '../checklist/ChecklistSection'
 import { IconPicker, NodeIcon } from '../icons'
 import { useWiki } from '../store'
-import { indexTree, pathTo, seenAt } from '../treeUtils'
+import { indexTree, isDeletedUser, pathTo, seenAt } from '../treeUtils'
 import { ApprovalBanner } from './ApprovalBanner'
 import { Backlinks } from './Backlinks'
 import { Dependencies } from './Dependencies'
@@ -253,6 +253,14 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
           {article === null && <p className="muted">Dieser Artikel existiert nicht mehr.</p>}
           {article && (
             <>
+              {summary && isDeletedUser(tree, summary.createdBy) && (
+                <div className="author-deleted-note">
+                  <UserX size={16} />
+                  <span>
+                    Verfasst von <strong>{summary.createdBy}</strong> – dieser Benutzer wurde gelöscht.
+                  </span>
+                </div>
+              )}
               <ApprovalBanner id={id} readMode={readMode} />
               <OutageBanner id={id} readMode={readMode} />
               {isEmpty && !contentReadOnly && <TemplateChooser id={article.id} />}

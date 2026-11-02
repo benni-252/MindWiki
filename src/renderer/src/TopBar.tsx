@@ -1,6 +1,10 @@
 import {
   ArrowDownCircle,
   ChevronDown,
+  KeyRound,
+  LogOut,
+  UserRound,
+  Users,
   History,
   Keyboard,
   Link2,
@@ -14,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { runAction } from './actions'
+import { ROLE_LABEL } from '../../shared/types'
 import { pendingApprovals } from './dialogs/ApprovalsDialog'
 import { useWiki } from './store'
 import { TemplateList } from './TemplateList'
@@ -106,8 +111,9 @@ function ChangesButton(): React.JSX.Element {
 function ApprovalsButton(): React.JSX.Element | null {
   const tree = useWiki((s) => s.tree)
   const userName = useWiki((s) => s.userName)
+  const session = useWiki((s) => s.session)
   if (!tree) return null
-  const { forMe, mine } = pendingApprovals(tree, userName)
+  const { forMe, mine } = pendingApprovals(tree, userName, session?.role === 'editor' || session?.role === 'admin')
   const total = forMe.length + mine.length
   if (!tree.approvalRequired && total === 0) return null
   if (total === 0) {
@@ -132,6 +138,64 @@ function ApprovalsButton(): React.JSX.Element | null {
       <ShieldAlert size={15} />
       <strong>{total}</strong> {total === 1 ? 'Freigabe offen' : 'Freigaben offen'}
     </button>
+  )
+}
+
+/** Angemeldeter Benutzer mit Menü: Passwort, Benutzerverwaltung (Admin), Abmelden. */
+function UserMenu(): React.JSX.Element | null {
+  const session = useWiki((s) => s.session)
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: Event): void => {
+      if (e instanceof KeyboardEvent && e.key !== 'Escape') return
+      if (e instanceof MouseEvent && ref.current?.contains(e.target as Node)) return
+      setOpen(false)
+    }
+    window.addEventListener('mousedown', close, true)
+    window.addEventListener('keydown', close, true)
+    return () => {
+      window.removeEventListener('mousedown', close, true)
+      window.removeEventListener('keydown', close, true)
+    }
+  }, [open])
+
+  if (!session) return null
+  const pick = (action: 'change-password' | 'users' | 'approvals' | 'logout') => () => {
+    setOpen(false)
+    void runAction(action)
+  }
+  return (
+    <div className="user-menu" ref={ref}>
+      <button className="user-chip" aria-expanded={open} title="Angemeldet" onClick={() => setOpen((o) => !o)}>
+        <UserRound size={15} />
+        <span>{session.username}</span>
+        <small>{ROLE_LABEL[session.role]}</small>
+      </button>
+      {open && (
+        <div className="menu dropdown" role="menu">
+          <button onClick={pick('change-password')}>
+            Passwort ändern <KeyRound size={14} />
+          </button>
+          {session.role === 'admin' && (
+            <>
+              <button onClick={pick('users')}>
+                Benutzer verwalten <Users size={14} />
+              </button>
+              <button onClick={pick('approvals')}>
+                Freigaben einstellen <ShieldCheck size={14} />
+              </button>
+            </>
+          )}
+          <hr />
+          <button onClick={pick('logout')}>
+            Abmelden <LogOut size={14} />
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -205,6 +269,7 @@ export function TopBar(): React.JSX.Element {
         <button className="icon-btn" title="Tastaturkürzel (F1)" onClick={() => void runAction('shortcuts')}>
           <Keyboard size={18} />
         </button>
+        <UserMenu />
       </div>
     </header>
   )

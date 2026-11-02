@@ -1,12 +1,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { autoBackup, openDatabase } from './db'
-import { saveSettings, userName } from './settings'
+import type { Session } from '../shared/types'
+import { saveSettings } from './settings'
 import { WikiStore } from './store'
 
 // Die aktuell geöffnete Wiki-Datei. Es ist immer genau eine offen.
 let store: WikiStore | null = null
 let dbFile = ''
+/** Angemeldeter Benutzer für die geöffnete Datei; beim Wechsel der Datei wird abgemeldet. */
+let session: Session | null = null
 let onChange: (() => void) | null = null
 
 export function onWikiChange(listener: () => void): void {
@@ -34,7 +37,7 @@ export function wikiName(file = dbFile): string {
 /** Öffnet bzw. erstellt eine Wiki-Datei und schließt die bisherige erst, wenn das geklappt hat. */
 export function openWiki(file: string): void {
   const existed = fs.existsSync(file) && fs.statSync(file).size > 0
-  const next = new WikiStore(openDatabase(file, wikiName(file)), userName())
+  const next = new WikiStore(openDatabase(file, wikiName(file)), 'Unbekannt')
   if (existed) {
     try {
       autoBackup(next.db, file)
@@ -46,8 +49,18 @@ export function openWiki(file: string): void {
   store?.db.close()
   store = next
   dbFile = file
+  session = null
   saveSettings({ lastDbPath: file })
   onChange?.()
+}
+
+export function currentSession(): Session | null {
+  return session
+}
+
+export function setSession(next: Session | null): void {
+  session = next
+  if (store) store.author = next?.username ?? 'Unbekannt'
 }
 
 export function closeWiki(): void {
