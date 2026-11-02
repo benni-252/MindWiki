@@ -5,11 +5,13 @@ import { runAction } from './actions'
 import { errorMessage, flushPending, wiki } from './api'
 import { ArticlePanel } from './article/ArticlePanel'
 import { ConfirmDialog } from './dialogs/ConfirmDialog'
+import { ChangesDialog } from './dialogs/ChangesDialog'
 import { AboutDialog, ShortcutsDialog } from './dialogs/InfoDialogs'
 import { OutagesDialog } from './dialogs/OutagesDialog'
 import { SearchDialog } from './dialogs/SearchDialog'
 import { Toasts } from './dialogs/Toasts'
 import { TrashDialog } from './dialogs/TrashDialog'
+import { UserNameDialog } from './dialogs/UserNameDialog'
 import { MindMap } from './mindmap/MindMap'
 import { useWiki } from './store'
 import { TopBar } from './TopBar'
@@ -61,6 +63,8 @@ export function App(): React.JSX.Element {
       wiki.onEvent((event) => {
         if (event.type === 'request-close') {
           void flushPending().finally(() => void wiki.confirmClose())
+        } else if (event.type === 'external-change') {
+          void useWiki.getState().externalChange()
         } else {
           void runAction(event.action)
         }
@@ -129,6 +133,8 @@ export function App(): React.JSX.Element {
         {dialog === 'search' && <SearchDialog />}
         {dialog === 'trash' && <TrashDialog />}
         {dialog === 'outages' && <OutagesDialog />}
+        {dialog === 'changes' && <ChangesDialog />}
+        {dialog === 'user-name' && <UserNameDialog />}
         {dialog === 'shortcuts' && <ShortcutsDialog />}
         {dialog === 'about' && <AboutDialog />}
         <ConfirmDialog />

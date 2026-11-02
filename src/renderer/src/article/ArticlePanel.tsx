@@ -1,16 +1,17 @@
 import { BookOpen, ChevronRight, Maximize2, Minimize2, PenLine, Shapes, TriangleAlert, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TEMPLATES } from '../../../shared/templates'
 import type { Article, ArticleField } from '../../../shared/types'
 import { errorMessage, wiki } from '../api'
 import { ChecklistSection } from '../checklist/ChecklistSection'
 import { IconPicker, NodeIcon } from '../icons'
 import { useWiki } from '../store'
-import { indexTree, pathTo } from '../treeUtils'
+import { indexTree, pathTo, seenAt } from '../treeUtils'
 import { Backlinks } from './Backlinks'
 import { Dependencies } from './Dependencies'
 import { Editor, type SaveStatus } from './Editor'
 import { FactSheet } from './FactSheet'
+import { History } from './History'
 import { OutageBanner } from './OutageBanner'
 
 const STATUS_TEXT: Record<SaveStatus, string> = {
@@ -133,16 +134,24 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
   const [article, setArticle] = useState<Article | null | undefined>(undefined)
   const [fields, setFields] = useState<ArticleField[]>([])
   const [status, setStatus] = useState<SaveStatus>('saved')
+  const loadedId = useRef<number | null>(null)
+  // Stand, zu dem `article` gehört: Editor und Abläufe erst neu aufbauen, wenn der neue Stand geladen ist
+  const [shownVersion, setShownVersion] = useState(version)
 
   useEffect(() => {
     let alive = true
-    setArticle(undefined)
-    setStatus('saved')
+    // Beim Neuladen desselben Artikels (Änderung von anderen) den alten Stand stehen lassen, kein Flackern
+    if (loadedId.current !== id) {
+      setArticle(undefined)
+      setStatus('saved')
+    }
+    loadedId.current = id
     Promise.all([wiki.getArticle(id), wiki.getFields(id)])
       .then(([a, f]) => {
         if (!alive) return
         setArticle(a)
         setFields(f)
+        setShownVersion(version)
       })
       .catch((err) => {
         if (alive) useWiki.getState().toast(errorMessage(err), 'error')
@@ -153,6 +162,14 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
   }, [id, version])
 
   const reloadFields = useCallback(async () => setFields(await wiki.getFields(id)), [id])
+
+  // Was andere geändert haben, seit ich den Artikel zuletzt gesehen habe – Stand beim Öffnen merken
+  const newSince = useMemo(() => {
+    const seen = useWiki.getState().seen
+    return seen ? seenAt(seen, id) : null
+  }, [id])
+  const lastOther = tree ? indexTree(tree).byId.get(id)?.lastOtherChangeAt : null
+  useEffect(() => useWiki.getState().markSeen(id), [id, lastOther])
 
   const summary = tree ? indexTree(tree).byId.get(id) : undefined
   const path = tree ? pathTo(tree, id).slice(0, -1) : []
@@ -219,16 +236,19 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
               <FactSheet articleId={article.id} fields={fields} readMode={readMode} reload={reloadFields} />
               <Dependencies id={article.id} readMode={readMode} />
               <Editor
-                key={`editor-${article.id}-${version}`}
+                key={`editor-${article.id}-${shownVersion}`}
                 articleId={article.id}
                 content={article.content}
                 editable={!readMode}
                 onStatus={setStatus}
               />
-              <ChecklistSection key={`checklists-${article.id}-${version}`} articleId={article.id} readMode={readMode} />
+              <ChecklistSection key={`checklists-${article.id}-${shownVersion}`} articleId={article.id} readMode={readMode} />
               <Backlinks id={article.id} />
+              <History id={article.id} newSince={newSince} />
               <p className="meta">
-                Erstellt {formatDate(article.createdAt)} · zuletzt geändert {formatDate(article.updatedAt)}
+                Erstellt {formatDate(article.createdAt)} · zuletzt geändert{' '}
+                {formatDate(summary?.lastChangeAt ?? article.updatedAt)}
+                {summary?.lastChangeBy && ` von ${summary.lastChangeBy}`}
               </p>
             </>
           )}

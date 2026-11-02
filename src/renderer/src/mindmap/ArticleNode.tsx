@@ -20,6 +20,8 @@ export interface ArticleNodeData extends Record<string, unknown> {
   hiddenStatus: ImpactStatus
   /** Tooltip mit Titel und ggf. Störungsangaben */
   tooltip: string
+  /** Jemand anderes hat den Artikel geändert, seit ich ihn zuletzt angesehen habe */
+  unseen: boolean
 }
 
 export type ArticleFlowNode = Node<ArticleNodeData, 'article'>
@@ -77,10 +79,11 @@ function RenameInput({ article }: { article: ArticleSummary }): React.JSX.Elemen
 }
 
 export function ArticleNode({ data }: NodeProps<ArticleFlowNode>): React.JSX.Element {
-  const { article, layout, selected, dropTarget, renaming, flash, status, hiddenStatus, tooltip } = data
+  const { article, layout, selected, dropTarget, renaming, flash, status, hiddenStatus, tooltip, unseen } = data
   const depthClass = `depth-${Math.min(layout.depth, 3)}`
   const classes = ['mm-node', depthClass, `side-${layout.side}`]
   if (status) classes.push(status)
+  if (unseen) classes.push('unseen')
   if (selected) classes.push('selected')
   if (dropTarget) classes.push('drop-target')
   if (flash) classes.push('flash')
@@ -100,6 +103,7 @@ export function ArticleNode({ data }: NodeProps<ArticleFlowNode>): React.JSX.Ele
       {article.icon && (
         <NodeIcon id={article.icon} size={layout.depth === 0 ? 20 : layout.depth === 1 ? 16 : 14} className="mm-icon" />
       )}
+      {unseen && <span className="mm-news" aria-label="Neu geändert" />}
       {renaming ? <RenameInput article={article} /> : <span className="mm-title">{article.title}</span>}
       {status === 'outage' && <TriangleAlert size={14} className="mm-status" aria-label="Störung" />}
       {status === 'affected' && <CircleAlert size={14} className="mm-status" aria-label="Betroffen" />}

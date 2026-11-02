@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type Key
 import { impactChain, impactStatus, type Impact, type ImpactStatus } from '../../../shared/impact'
 import type { ArticleSummary } from '../../../shared/types'
 import { useWiki } from '../store'
-import { impactOf, indexTree, isInSubtree } from '../treeUtils'
+import { formatWhen, impactOf, indexTree, isInSubtree, isUnseen } from '../treeUtils'
 import { ArticleNode, focusMap, type ArticleFlowNode } from './ArticleNode'
 import { ContextMenu } from './ContextMenu'
 import { estimateWidth, layoutMindMap, type LayoutArticle, type LayoutNode } from './layout'
@@ -85,6 +85,7 @@ export function MindMap(): React.JSX.Element {
   const showLinks = useWiki((s) => s.showLinks)
   const centerRequest = useWiki((s) => s.centerRequest)
   const fitNonce = useWiki((s) => s.fitNonce)
+  const seen = useWiki((s) => s.seen)
   const flow = useReactFlow<ArticleFlowNode>()
   const wrapperRef = useRef<HTMLDivElement>(null)
 
@@ -139,6 +140,8 @@ export function MindMap(): React.JSX.Element {
       if (!article) continue
       const key = String(n.id)
       const pos = drag?.id === n.id ? drag : (positions.get(n.id) ?? n)
+      const unseen = isUnseen(article, seen)
+      const tooltip = nodeTooltip(article, impact, byId)
       result.push({
         id: key,
         type: 'article',
@@ -158,13 +161,17 @@ export function MindMap(): React.JSX.Element {
           flash: n.id === flashId,
           status: impactStatus(impact, n.id),
           hiddenStatus: hidden.get(n.id) ?? null,
-          tooltip: nodeTooltip(article, impact, byId)
+          tooltip:
+            unseen && article.lastOtherChangeAt
+              ? `${tooltip}\nNeu geändert von ${article.lastOtherChangeBy ?? 'jemand anderem'} (${formatWhen(article.lastOtherChangeAt)})`
+              : tooltip,
+          unseen
         }
       })
     }
     return result
     // sizeVersion: gemessene Größen in die Knoten übernehmen
-  }, [tree, layout, positions, drag, dropTarget, selectedId, renamingId, flashId, sizeVersion])
+  }, [tree, layout, positions, drag, dropTarget, selectedId, renamingId, flashId, sizeVersion, seen])
 
   const edges = useMemo<Edge[]>(() => {
     if (!tree) return []

@@ -16,6 +16,10 @@ export function setPending(key: string, flush: (() => Promise<void>) | null): vo
   else pending.delete(key)
 }
 
+export function hasPending(): boolean {
+  return pending.size > 0
+}
+
 export async function flushPending(): Promise<void> {
   const tasks = [...pending.values()]
   pending.clear()

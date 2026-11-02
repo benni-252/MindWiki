@@ -1,10 +1,10 @@
 import { create } from 'zustand'
 import { findTemplate } from '../../shared/templates'
 import type { DbInfo, TreeData } from '../../shared/types'
-import { errorMessage, flushPending, wiki } from './api'
-import { countSubtree, impactOf, indexTree, pathTo } from './treeUtils'
+import { errorMessage, flushPending, hasPending, wiki } from './api'
+import { countSubtree, impactOf, indexTree, pathTo, type SeenState } from './treeUtils'
 
-export type DialogKind = 'search' | 'trash' | 'outages' | 'shortcuts' | 'about' | null
+export type DialogKind = 'search' | 'trash' | 'outages' | 'changes' | 'user-name' | 'shortcuts' | 'about' | null
 
 export interface ConfirmOptions {
   title: string
@@ -39,6 +39,10 @@ interface State {
   fitNonce: number
   /** Steigt, wenn sich Inhalt/Felder/Abläufe eines Artikels von außen geändert haben (Vorlage) */
   articleVersion: number
+  /** Name, unter dem eigene Änderungen im Verlauf erscheinen */
+  userName: string
+  /** Wann welcher Artikel zuletzt angesehen wurde (für „neu geändert“) */
+  seen: SeenState | null
 
   loadAll(): Promise<void>
   loadTree(): Promise<void>
@@ -71,6 +75,13 @@ interface State {
   resolveOutage(id: number): Promise<void>
   /** Klappt eingeklappte Vorfahren auf und öffnet den Artikel */
   reveal(id: number): Promise<void>
+  /** Offenen Artikel komplett neu laden (Text, Felder, Abläufe) */
+  reloadArticle(): void
+  markSeen(id: number): void
+  markAllSeen(): void
+  setUserName(name: string): Promise<void>
+  /** Ein anderer Rechner hat die Wiki-Datei geändert */
+  externalChange(): Promise<void>
 }
 
 function readPref(key: string, fallback: boolean): boolean {
@@ -92,6 +103,38 @@ function writePref(key: string, value: boolean): void {
 
 let toastId = 0
 let nonce = 0
+
+const seenKey = (dbPath: string): string => `mindwiki.seen:${dbPath}`
+
+function loadSeen(dbPath: string): SeenState {
+  try {
+    const raw = localStorage.getItem(seenKey(dbPath))
+    const value = raw ? (JSON.parse(raw) as SeenState) : null
+    if (value && typeof value.baseline === 'string' && value.items && typeof value.items === 'object') return value
+  } catch {
+    // ungültig oder kein Zugriff – neu beginnen
+  }
+  const fresh: SeenState = { baseline: new Date().toISOString(), items: {} }
+  saveSeen(dbPath, fresh)
+  return fresh
+}
+
+function saveSeen(dbPath: string, seen: SeenState): void {
+  try {
+    localStorage.setItem(seenKey(dbPath), JSON.stringify(seen))
+  } catch {
+    // nur Komfort
+  }
+}
+
+/** Tippt der Nutzer gerade im Artikel (Feld, Ablaufschritt, Notiz)? */
+function typingInPanel(): boolean {
+  const el = document.activeElement as HTMLElement | null
+  return !!el?.closest('.panel') && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
+}
+
+/** Hinweis „von X geändert“ höchstens einmal pro Minute und Artikel, auch wenn jemand gerade viel tippt */
+let lastForeignToast = { id: 0, at: 0 }
 
 export const useWiki = create<State>((set, get) => {
   /** Führt eine Änderung aus, lädt den Baum neu und zeigt Fehler als Hinweis. */
@@ -128,12 +171,16 @@ export const useWiki = create<State>((set, get) => {
     centerRequest: null,
     fitNonce: 0,
     articleVersion: 0,
+    userName: '',
+    seen: null,
 
     async loadAll() {
-      const [tree, dbInfo] = await Promise.all([wiki.getTree(), wiki.getDbInfo()])
+      const [tree, dbInfo, userName] = await Promise.all([wiki.getTree(), wiki.getDbInfo(), wiki.getUserName()])
       set({
         tree,
         dbInfo,
+        userName,
+        seen: loadSeen(dbInfo.path),
         selectedId: tree.rootId,
         panelOpen: false,
         panelMax: false,
@@ -309,6 +356,70 @@ export const useWiki = create<State>((set, get) => {
         })
       }
       get().openArticle(id, 'flash')
+    },
+
+    reloadArticle: () => set({ articleVersion: get().articleVersion + 1 }),
+
+    markSeen(id) {
+      const { seen, dbInfo, tree } = get()
+      if (!seen || !dbInfo) return
+      // Uhren verschiedener Rechner gehen nie ganz gleich: mindestens bis zur letzten fremden Änderung
+      const other = tree ? (indexTree(tree).byId.get(id)?.lastOtherChangeAt ?? '') : ''
+      const now = new Date().toISOString()
+      const stamp = other > now ? other : now
+      if (seen.items[id] && seen.items[id] >= stamp) return
+      const next = { ...seen, items: { ...seen.items, [id]: stamp } }
+      saveSeen(dbInfo.path, next)
+      set({ seen: next })
+    },
+
+    markAllSeen() {
+      const { dbInfo, tree } = get()
+      if (!dbInfo) return
+      const now = new Date().toISOString()
+      const latest = (tree?.articles ?? []).reduce((max, a) => ((a.lastOtherChangeAt ?? '') > max ? (a.lastOtherChangeAt ?? '') : max), now)
+      const next: SeenState = { baseline: latest, items: {} }
+      saveSeen(dbInfo.path, next)
+      set({ seen: next })
+    },
+
+    async setUserName(name) {
+      try {
+        const userName = await wiki.setUserName(name)
+        set({ userName })
+        await get().loadTree()
+        get().toast(`Deine Änderungen erscheinen jetzt als „${userName}“.`)
+      } catch (err) {
+        get().toast(errorMessage(err), 'error')
+      }
+    },
+
+    async externalChange() {
+      const before = get().tree
+      try {
+        await get().loadTree()
+      } catch {
+        return // Datei kurz nicht erreichbar – beim nächsten Mal
+      }
+      const { tree, selectedId, panelOpen, userName } = get()
+      if (!before || !tree || !panelOpen || selectedId == null) return
+      const old = indexTree(before).byId.get(selectedId)
+      const now = indexTree(tree).byId.get(selectedId)
+      if (!now?.lastChangeBy || now.lastChangeAt === old?.lastChangeAt || now.lastChangeBy === userName) return
+
+      const quiet = lastForeignToast.id === now.id && Date.now() - lastForeignToast.at < 60_000
+      if (hasPending() || typingInPanel()) {
+        if (!quiet) {
+          get().toast(
+            `${now.lastChangeBy} hat „${now.title}“ gerade auch geändert. Deine Eingaben werden gespeichert – frühere Fassungen findest du im Verlauf.`,
+            'error'
+          )
+        }
+      } else {
+        get().reloadArticle()
+        if (!quiet) get().toast(`„${now.title}“ wurde von ${now.lastChangeBy} geändert.`)
+      }
+      if (!quiet) lastForeignToast = { id: now.id, at: Date.now() }
     }
   }
 })

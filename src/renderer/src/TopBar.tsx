@@ -1,9 +1,9 @@
-import { ChevronDown, Keyboard, Link2, Plus, Scan, Search, Trash2, TriangleAlert } from 'lucide-react'
+import { ChevronDown, History, Keyboard, Link2, Plus, Scan, Search, Trash2, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { runAction } from './actions'
 import { useWiki } from './store'
 import { TemplateList } from './TemplateList'
-import { impactOf, indexTree } from './treeUtils'
+import { impactOf, indexTree, unseenArticles } from './treeUtils'
 
 /** Plus-Knopf: neuer Unterartikel zum ausgewählten Artikel, leer oder aus einer Vorlage. */
 function AddMenu(): React.JSX.Element {
@@ -71,6 +71,23 @@ function OutageIndicator(): React.JSX.Element | null {
   )
 }
 
+/** Letzte Änderungen; Zähler für Artikel, die andere seit meinem letzten Besuch geändert haben. */
+function ChangesButton(): React.JSX.Element {
+  const tree = useWiki((s) => s.tree)
+  const seen = useWiki((s) => s.seen)
+  const count = tree ? unseenArticles(tree, seen).length : 0
+  return (
+    <button
+      className={`icon-btn badge-host ${count > 0 ? 'has-news' : ''}`}
+      title={count > 0 ? `${count} ${count === 1 ? 'Artikel wurde' : 'Artikel wurden'} von anderen geändert` : 'Letzte Änderungen (Strg+Umschalt+H)'}
+      onClick={() => void runAction('changes')}
+    >
+      <History size={18} />
+      {count > 0 && <span className="badge">{count > 99 ? '99+' : count}</span>}
+    </button>
+  )
+}
+
 export function TopBar(): React.JSX.Element {
   const tree = useWiki((s) => s.tree)
   const dbInfo = useWiki((s) => s.dbInfo)
@@ -114,6 +131,7 @@ export function TopBar(): React.JSX.Element {
         <button className="icon-btn" title="Ganze Mind Map zeigen (Strg+0)" onClick={() => void runAction('fit')}>
           <Scan size={18} />
         </button>
+        <ChangesButton />
         <button className="icon-btn" title="Papierkorb" onClick={() => void runAction('trash')}>
           <Trash2 size={18} />
         </button>

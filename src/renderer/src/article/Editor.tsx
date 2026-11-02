@@ -21,19 +21,9 @@ interface Props {
 
 const SAVE_DELAY = 600
 
-function parseContent(content: string | null): object | string {
-  if (!content) return ''
-  try {
-    return JSON.parse(content) as object
-  } catch {
-    return ''
-  }
-}
-
-export function Editor({ articleId, content, editable, onStatus }: Props): React.JSX.Element {
-  const latest = useRef<{ json: string; text: string } | null>(null)
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const [extensions] = useState(() => [
+/** Erweiterungen für den Editor und die Leseansicht alter Fassungen. */
+export function createExtensions(articleId: number) {
+  return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
       link: { openOnClick: false, autolink: true, defaultProtocol: 'https' }
@@ -45,7 +35,22 @@ export function Editor({ articleId, content, editable, onStatus }: Props): React
     TableHeader,
     TableCell,
     createArticleLink(articleId)
-  ])
+  ]
+}
+
+export function parseContent(content: string | null): object | string {
+  if (!content) return ''
+  try {
+    return JSON.parse(content) as object
+  } catch {
+    return ''
+  }
+}
+
+export function Editor({ articleId, content, editable, onStatus }: Props): React.JSX.Element {
+  const latest = useRef<{ json: string; text: string } | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [extensions] = useState(() => createExtensions(articleId))
 
   // Speichern: entprellt, beim Artikelwechsel/Schließen sofort.
   const flush = useRef(async (): Promise<void> => {})
@@ -128,4 +133,14 @@ export function Editor({ articleId, content, editable, onStatus }: Props): React
       <EditorContent editor={editor} className="editor-content" />
     </div>
   )
+}
+
+/** Nur-Lese-Ansicht eines Artikeltexts, z. B. einer früheren Fassung. */
+export function TextViewer({ articleId, content }: { articleId: number; content: string }): React.JSX.Element {
+  const [extensions] = useState(() => createExtensions(articleId))
+  const editor = useEditor(
+    { extensions, content: parseContent(content), editable: false, editorProps: { attributes: { class: 'prose' } } },
+    [content]
+  )
+  return <EditorContent editor={editor} className="editor-content version-view" />
 }

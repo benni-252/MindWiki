@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { autoBackup, openDatabase } from './db'
-import { saveSettings } from './settings'
+import { saveSettings, userName } from './settings'
 import { WikiStore } from './store'
 
 // Die aktuell geöffnete Wiki-Datei. Es ist immer genau eine offen.
@@ -18,6 +18,11 @@ export function currentStore(): WikiStore {
   return store
 }
 
+/** Das geöffnete Wiki oder null (z. B. während des Beendens). */
+export function peekStore(): WikiStore | null {
+  return store
+}
+
 export function currentDbFile(): string {
   return dbFile
 }
@@ -29,7 +34,7 @@ export function wikiName(file = dbFile): string {
 /** Öffnet bzw. erstellt eine Wiki-Datei und schließt die bisherige erst, wenn das geklappt hat. */
 export function openWiki(file: string): void {
   const existed = fs.existsSync(file) && fs.statSync(file).size > 0
-  const next = new WikiStore(openDatabase(file, wikiName(file)))
+  const next = new WikiStore(openDatabase(file, wikiName(file)), userName())
   if (existed) {
     try {
       autoBackup(next.db, file)

@@ -13,6 +13,15 @@ Lokales Wiki als Mind Map: Artikel hängen in einem Baum (Hauptthema in der Mitt
 - **Sicherungen:** beim Start höchstens einmal pro Tag automatisch in `Sicherungen\` neben der Datenbank (die letzten 5 bleiben). Manuell: *Datei › Sicherung erstellen* (Strg+Umschalt+S).
 - **Papierkorb:** Gelöschte Äste lassen sich unter *Bearbeiten › Papierkorb* wiederherstellen.
 
+### Gemeinsam mit anderen nutzen
+
+- **Eine Datei für alle:** Die Wiki-Datei auf ein Netzlaufwerk bzw. eine Server-Freigabe legen (z. B. `\\server\IT\Wiki.db`). Jeder öffnet sie über *Datei › Wiki öffnen*. Änderungen der anderen erscheinen nach ein bis zwei Sekunden von selbst; ist ein Artikel gerade offen, wird er neu geladen. Alle sollten dieselbe MindWiki-Version verwenden.
+- **Verlauf:** Unten in jedem Artikel steht, wer wann was geändert hat – Titel, Text, Steckbrief-Felder, Abläufe, Abhängigkeiten, Störungen, Verschieben und Papierkorb. Werte von Passwort-Feldern landen nicht im Verlauf.
+- **Frühere Textfassungen:** Bei Textänderungen zeigt „Text davor ansehen“, wie der Text vorher aussah; „Diese Fassung wiederherstellen“ holt ihn zurück. Je Artikel bleiben die letzten 30 Fassungen erhalten.
+- **Neu von anderen:** Hat jemand anderes einen Artikel geändert, seit du ihn zuletzt angesehen hast, trägt der Knoten einen blauen Punkt und das Uhr-Symbol oben zeigt die Anzahl. Ein Klick (oder Strg+Umschalt+H) öffnet *Letzte Änderungen*.
+- **Dein Name:** Änderungen erscheinen mit dem Windows-Benutzernamen; ändern über *Datei › Mein Name im Verlauf*.
+- Ein- und Ausklappen von Ästen ist in der Datei gespeichert und gilt damit für alle.
+
 ### IT-Funktionen
 
 - **Vorlagen:** Server / System, Netzwerkgerät, Software, Anleitung, Störung / Fehlerbehebung, Dienstleister / Kontakt – jeweils mit Steckbrief-Feldern, Gliederung und passendem Ablauf. Erreichbar über den Plus-Knopf oben, per Rechtsklick „Unterartikel aus Vorlage“ oder in einem leeren Artikel über „Mit Vorlage starten“.
@@ -31,6 +40,7 @@ Lokales Wiki als Mind Map: Artikel hängen in einem Baum (Hauptthema in der Mitt
 | Pfeiltasten, Alt+↑/↓ | Navigieren, Reihenfolge ändern |
 | Knoten auf anderen ziehen | Umhängen |
 | Strg+K | Suchen (Titel, Text, Ablaufschritte) |
+| Strg+Umschalt+H | Letzte Änderungen (auch von anderen) |
 | `[[` im Text | Anderen Artikel verlinken (erscheint als gestrichelte Linie in der Mind Map) |
 | Strg+V | Bild/Screenshot einfügen |
 
