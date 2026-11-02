@@ -2,10 +2,12 @@
 
 Lokales Wiki als Mind Map: Artikel hängen in einem Baum (Hauptthema in der Mitte), können per `[[` aufeinander verweisen und enthalten abhakbare Abläufe mit Protokoll. Alles liegt in **einer** SQLite-Datei auf deinem Rechner.
 
+**⬇ [Neueste Version für Windows herunterladen](https://github.com/benni-252/MindWiki/releases/latest)**
+
 ## Programm benutzen
 
 - **Herunterladen:** Die fertigen .exe-Dateien liegen auf GitHub unter **Releases** (rechts auf der Repo-Seite). Im Repository selbst sind sie absichtlich nicht enthalten (`dist/` steht in `.gitignore`), sie werden vom Workflow `Windows-Build` erzeugt – siehe [Windows-Programme auf GitHub bauen](#windows-programme-auf-github-bauen).
-- **Installieren:** `MindWiki-Setup-1.0.0.exe` ausführen – oder ohne Installation `MindWiki-1.0.0-portable.exe` starten.
+- **Installieren:** `MindWiki-Setup-<Version>.exe` ausführen – oder ohne Installation `MindWiki-<Version>-portable.exe` starten.
   Die .exe ist nicht signiert; Windows SmartScreen fragt beim ersten Start nach („Weitere Informationen“ → „Trotzdem ausführen“).
 - **Daten:** standardmäßig `Dokumente\MindWiki\Wiki.db`. Über *Datei › Neues Wiki / Wiki öffnen* kannst du weitere Wikis anlegen bzw. wechseln.
 - **Sicherungen:** beim Start höchstens einmal pro Tag automatisch in `Sicherungen\` neben der Datenbank (die letzten 5 bleiben). Manuell: *Datei › Sicherung erstellen* (Strg+Umschalt+S).
@@ -52,7 +54,7 @@ Falls Electron beim ersten Start fehlt: `node node_modules/electron/install.js`.
 
 Der Workflow `.github/workflows/windows-build.yml` baut Installer und portable .exe auf einem Windows-Rechner von GitHub:
 
-- **Neues Release:** Auf GitHub unter *Releases › Draft a new release* einen Tag wie `v1.0.0` anlegen und veröffentlichen. Nach ein paar Minuten hängen beide .exe-Dateien am Release.
+- **Neues Release:** Auf GitHub unter *Releases › Draft a new release* einen Tag wie `v1.1.0` anlegen und veröffentlichen. Nach ein paar Minuten hängen beide .exe-Dateien am Release.
 - **Nur testweise bauen:** *Actions › Windows-Build › Run workflow*. Die .exe-Dateien liegen danach im Lauf unter *Artifacts* als ZIP.
 
 Die Version im Dateinamen kommt aus `version` in `package.json` – vor einem neuen Release dort erhöhen.
