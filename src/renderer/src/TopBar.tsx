@@ -1,4 +1,17 @@
-import { ChevronDown, History, Keyboard, Link2, Plus, Scan, Search, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
+import {
+  ArrowDownCircle,
+  ChevronDown,
+  History,
+  Keyboard,
+  Link2,
+  Plus,
+  Scan,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
+  TriangleAlert
+} from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { runAction } from './actions'
 import { pendingApprovals } from './dialogs/ApprovalsDialog'
@@ -95,16 +108,47 @@ function ApprovalsButton(): React.JSX.Element | null {
   const userName = useWiki((s) => s.userName)
   if (!tree) return null
   const { forMe, mine } = pendingApprovals(tree, userName)
-  if (!tree.approvalRequired && forMe.length + mine.length === 0) return null
-  const count = forMe.length
+  const total = forMe.length + mine.length
+  if (!tree.approvalRequired && total === 0) return null
+  if (total === 0) {
+    return (
+      <button className="icon-btn" title="Freigaben – nichts offen" onClick={() => void runAction('approvals')}>
+        <ShieldCheck size={18} />
+      </button>
+    )
+  }
+  const details = [
+    forMe.length > 0 && `${forMe.length} ${forMe.length === 1 ? 'wartet' : 'warten'} auf deine Freigabe`,
+    mine.length > 0 && `${mine.length} ${mine.length === 1 ? 'eigener Entwurf wartet' : 'eigene Entwürfe warten'} auf andere`
+  ]
+    .filter(Boolean)
+    .join(' · ')
   return (
     <button
-      className={`icon-btn badge-host ${count > 0 ? 'has-approvals' : ''}`}
-      title={count > 0 ? `${count} ${count === 1 ? 'Freigabe wartet' : 'Freigaben warten'} auf dich` : 'Freigaben'}
+      className={`approval-pill ${forMe.length > 0 ? 'for-me' : 'mine'}`}
+      title={details}
       onClick={() => void runAction('approvals')}
     >
-      <ShieldCheck size={18} />
-      {count > 0 && <span className="badge badge-approval">{count > 99 ? '99+' : count}</span>}
+      <ShieldAlert size={15} />
+      <strong>{total}</strong> {total === 1 ? 'Freigabe offen' : 'Freigaben offen'}
+    </button>
+  )
+}
+
+/** Hinweis auf eine neue Version, solange sie verfügbar, im Download oder installationsbereit ist. */
+function UpdateIndicator(): React.JSX.Element | null {
+  const update = useWiki((s) => s.update)
+  if (update.status !== 'available' && update.status !== 'downloading' && update.status !== 'ready') return null
+  const label =
+    update.status === 'ready'
+      ? 'Neu starten zum Aktualisieren'
+      : update.status === 'downloading'
+        ? `Update wird geladen … ${update.percent ?? 0} %`
+        : `Update ${update.version ?? ''} verfügbar`
+  return (
+    <button className="update-pill" title="Neue MindWiki-Version" onClick={() => useWiki.getState().setDialog('update')}>
+      <ArrowDownCircle size={15} />
+      {label}
     </button>
   )
 }
@@ -138,6 +182,7 @@ export function TopBar(): React.JSX.Element {
       </button>
 
       <OutageIndicator />
+      <UpdateIndicator />
 
       <div className="topbar-actions">
         <AddMenu />

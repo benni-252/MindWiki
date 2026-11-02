@@ -4,6 +4,7 @@ import path from 'node:path'
 import { IMAGE_SCHEME, type MenuAction, type WikiEvent } from '../shared/types'
 import { registerIpc, tryOpen } from './ipc'
 import { ensureSampleWiki } from './sample'
+import { initUpdater } from './updater'
 import { defaultDbPath, loadSettings, sampleDbPath } from './settings'
 import { closeWiki, currentStore, onWikiChange, peekStore, wikiName } from './wiki'
 
@@ -87,6 +88,7 @@ function buildMenu(): void {
       submenu: [
         item('Tastaturkürzel', 'shortcuts', 'F1'),
         item('Beispiel-Wiki öffnen', 'sample-db'),
+        item('Nach Updates suchen…', 'check-updates'),
         { type: 'separator' },
         item('Über MindWiki', 'about')
       ]
@@ -223,6 +225,13 @@ if (!app.requestSingleInstanceLock()) {
     buildMenu()
     createWindow()
     watchForeignChanges()
+    initUpdater(
+      (state) => send({ type: 'update', state }),
+      () => {
+        // Zum Installieren beenden, ohne auf die Oberfläche zu warten (die hat vorher gespeichert)
+        closeAllowed = true
+      }
+    )
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()

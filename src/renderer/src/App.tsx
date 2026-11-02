@@ -13,6 +13,7 @@ import { OutagesDialog } from './dialogs/OutagesDialog'
 import { SearchDialog } from './dialogs/SearchDialog'
 import { Toasts } from './dialogs/Toasts'
 import { TrashDialog } from './dialogs/TrashDialog'
+import { UpdateDialog } from './dialogs/UpdateDialog'
 import { UserNameDialog } from './dialogs/UserNameDialog'
 import { MindMap } from './mindmap/MindMap'
 import { useWiki } from './store'
@@ -87,6 +88,8 @@ export function App(): React.JSX.Element {
           void flushPending().finally(() => void wiki.confirmClose())
         } else if (event.type === 'external-change') {
           void useWiki.getState().externalChange()
+        } else if (event.type === 'update') {
+          useWiki.getState().setUpdate(event.state)
         } else {
           void runAction(event.action)
         }
@@ -159,6 +162,7 @@ export function App(): React.JSX.Element {
         {dialog === 'changes' && <ChangesDialog />}
         {dialog === 'user-name' && <UserNameDialog />}
         {dialog === 'approvals' && <ApprovalsDialog />}
+        {dialog === 'update' && <UpdateDialog />}
         {dialog === 'shortcuts' && <ShortcutsDialog />}
         {dialog === 'about' && <AboutDialog />}
         <ConfirmDialog />

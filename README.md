@@ -13,6 +13,7 @@ Lokales Wiki als Mind Map: Artikel hängen in einem Baum (Hauptthema in der Mitt
 - **Herunterladen:** Die fertigen .exe-Dateien liegen auf GitHub unter **Releases** (rechts auf der Repo-Seite). Im Repository selbst sind sie absichtlich nicht enthalten (`dist/` steht in `.gitignore`), sie werden vom Workflow `Windows-Build` erzeugt – siehe [Windows-Programme auf GitHub bauen](#windows-programme-auf-github-bauen).
 - **Installieren:** `MindWiki-Setup-<Version>.exe` ausführen – oder ohne Installation `MindWiki-<Version>-portable.exe` starten.
   Die .exe ist nicht signiert; Windows SmartScreen fragt beim ersten Start nach („Weitere Informationen“ → „Trotzdem ausführen“).
+- **Updates:** Die installierte Version prüft beim Start und alle paar Stunden, ob es auf GitHub eine neue Version gibt. Dann erscheint oben „Update … verfügbar“; ein Klick lädt sie herunter und installiert sie mit einem kurzen Neustart (deine Daten bleiben erhalten). Von Hand: *Hilfe › Nach Updates suchen…*. Die portable Version zeigt nur den Hinweis und öffnet die Download-Seite. Dafür muss das GitHub-Repository öffentlich sein.
 - **Daten:** standardmäßig `Dokumente\MindWiki\Wiki.db`. Über *Datei › Neues Wiki / Wiki öffnen* kannst du weitere Wikis anlegen bzw. wechseln.
 - **Sicherungen:** beim Start höchstens einmal pro Tag automatisch in `Sicherungen\` neben der Datenbank (die letzten 5 bleiben). Manuell: *Datei › Sicherung erstellen* (Strg+Umschalt+S).
 - **Papierkorb:** Gelöschte Äste lassen sich unter *Bearbeiten › Papierkorb* wiederherstellen.
@@ -32,7 +33,8 @@ Einschalten unter *Datei › Freigaben…* (gilt für alle, die die Wiki-Datei b
 
 - **Neue Artikel** sind zunächst Entwürfe: in der Mind Map gestrichelt, im Artikel steht „wartet auf Freigabe“. Die Autorin kann sie weiter bearbeiten; freigeben oder ablehnen kann nur jemand anderes. Abgelehnte Artikel landen im Papierkorb.
 - **Änderungen an freigegebenen Artikeln** beginnen mit „Bearbeiten“: Man arbeitet an einem eigenen Entwurf (Text, Titel, Symbol, Steckbrief, Abläufe), die anderen sehen so lange den freigegebenen Stand. Ein Stift-Symbol am Knoten zeigt den offenen Vorschlag. Andere sehen mit „Änderungen ansehen“ den Vergleich (rot bisher, grün neu) und können freigeben oder mit Begründung ablehnen. Pro Artikel gibt es höchstens einen offenen Vorschlag.
-- Das Schild-Symbol oben zählt, was auf deine Freigabe wartet, und listet auch deine eigenen offenen Entwürfe.
+- Text, der noch nicht freigegeben ist, ist markiert: bei neuen Artikeln der ganze Text, im eigenen Entwurf die geänderten Absätze (gelb).
+- Oben steht „X Freigaben offen“, sobald etwas offen ist – orange, wenn etwas auf deine Freigabe wartet, blau, wenn nur deine eigenen Entwürfe auf andere warten. Ein Klick zeigt die Liste.
 - Sofort und ohne Freigabe gehen weiterhin: Störung melden/beheben, Abhängigkeiten, Abläufe abhaken und protokollieren, Verschieben, Papierkorb.
 - Beim Ausschalten werden alle offenen Entwürfe übernommen. Wer freigeben darf, wird am Namen im Verlauf erkannt – das ist eine Absprache im Team, kein Schutz mit Passwort.
 

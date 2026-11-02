@@ -39,6 +39,10 @@ export async function runAction(action: MenuAction): Promise<void> {
       case 'about':
         s.setDialog(action)
         break
+      case 'check-updates':
+        s.setDialog('update')
+        s.setUpdate(await wiki.checkForUpdates())
+        break
       case 'toggle-links':
         s.toggleLinks()
         break

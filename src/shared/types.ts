@@ -166,6 +166,19 @@ export interface DbInfo {
   isSample: boolean
 }
 
+/** Stand der Update-Prüfung (GitHub-Releases). */
+export interface UpdateState {
+  status: 'idle' | 'checking' | 'current' | 'available' | 'downloading' | 'ready' | 'error' | 'unsupported'
+  /** Installierte Version */
+  current: string
+  /** Neue Version, falls vorhanden */
+  version?: string
+  percent?: number
+  /** false: portable Version – nur Download-Seite öffnen */
+  canInstall?: boolean
+  message?: string
+}
+
 export interface SaveResult {
   /** true, wenn sich Querverweise oder die Text-Markierung geändert haben (Mind Map neu laden) */
   treeChanged: boolean
@@ -247,6 +260,11 @@ export interface WikiRpc {
   openDb(): Promise<boolean>
   /** Beispiel-Wiki öffnen (beim ersten Mal anlegen) */
   openSampleDb(): Promise<boolean>
+  getUpdateState(): UpdateState
+  checkForUpdates(): Promise<UpdateState>
+  downloadUpdate(): Promise<void>
+  installUpdate(): void
+  openReleasePage(): void
   backupDb(): Promise<string | null>
   revealDb(): void
   confirmClose(): void
@@ -310,6 +328,11 @@ export const RPC_METHODS = [
   'newDb',
   'openDb',
   'openSampleDb',
+  'getUpdateState',
+  'checkForUpdates',
+  'downloadUpdate',
+  'installUpdate',
+  'openReleasePage',
   'backupDb',
   'revealDb',
   'confirmClose'
@@ -332,6 +355,7 @@ export type MenuAction =
   | 'user-name'
   | 'approvals'
   | 'sample-db'
+  | 'check-updates'
   | 'toggle-links'
   | 'fit'
   | 'shortcuts'
@@ -342,6 +366,7 @@ export type WikiEvent =
   | { type: 'request-close' }
   /** Jemand anderes hat die geöffnete Wiki-Datei geändert */
   | { type: 'external-change' }
+  | { type: 'update'; state: UpdateState }
 
 type Promisify<T> = {
   [K in keyof T]: T[K] extends (...args: infer A) => infer R ? (...args: A) => Promise<Awaited<R>> : never

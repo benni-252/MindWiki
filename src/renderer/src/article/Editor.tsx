@@ -1,9 +1,14 @@
 import Image from '@tiptap/extension-image'
 import { TableCell, TableHeader, TableRow, Table } from '@tiptap/extension-table'
 import { Placeholder } from '@tiptap/extensions'
-import { EditorContent, useEditor } from '@tiptap/react'
+import { Node as PMNode } from '@tiptap/pm/model'
+import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { EditorContent, Extension, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import { ShieldAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { diffLines } from '../../../shared/diff'
 import { errorMessage, setPending, wiki } from '../api'
 import { useWiki } from '../store'
 import { createArticleLink } from './articleLink'
@@ -17,13 +22,66 @@ interface Props {
   content: string | null
   editable: boolean
   onStatus(status: SaveStatus): void
+  /**
+   * Freigabe: 'all' – der ganze Text ist noch nicht freigegeben (neuer Artikel);
+   * 'changes' – Entwurf, Absätze mit Unterschieden zu `baseline` werden markiert.
+   */
+  unapproved?: 'all' | 'changes' | null
+  /** Freigegebener Text (TipTap-JSON) zum Vergleich bei 'changes' */
+  baseline?: string | null
 }
 
 const SAVE_DELAY = 600
 
-/** Erweiterungen für den Editor und die Leseansicht alter Fassungen. */
-export function createExtensions(articleId: number) {
+/** Markiert Absätze (oberste Ebene), die es im freigegebenen Text so nicht gibt. */
+function unapprovedBlocks(baseline: string | null): Extension {
+  const key = new PluginKey<DecorationSet>('unapprovedBlocks')
+  return Extension.create({
+    name: 'unapprovedBlocks',
+    addProseMirrorPlugins() {
+      const blockKey = (node: PMNode): string => JSON.stringify(node.toJSON())
+      let base: string[] = []
+      try {
+        if (baseline) base = PMNode.fromJSON(this.editor.schema, JSON.parse(baseline)).content.content.map(blockKey)
+      } catch {
+        base = []
+      }
+      const compute = (doc: PMNode): DecorationSet => {
+        const blocks: { node: PMNode; pos: number }[] = []
+        doc.forEach((node, pos) => blocks.push({ node, pos }))
+        const decorations: Decoration[] = []
+        let i = 0
+        for (const line of diffLines(base, blocks.map((b) => blockKey(b.node)))) {
+          if (line.kind === 'removed') continue
+          const block = blocks[i++]
+          // leere Absätze nicht markieren, das wäre nur Rauschen
+          if (line.kind === 'added' && block.node.content.size > 0) {
+            decorations.push(Decoration.node(block.pos, block.pos + block.node.nodeSize, { class: 'unapproved-block' }))
+          }
+        }
+        return DecorationSet.create(doc, decorations)
+      }
+      return [
+        new Plugin<DecorationSet>({
+          key,
+          state: {
+            init: (_config, state) => compute(state.doc),
+            apply: (tr, old) => (tr.docChanged ? compute(tr.doc) : old)
+          },
+          props: { decorations: (state) => key.getState(state) }
+        })
+      ]
+    }
+  })
+}
+
+/**
+ * Erweiterungen für den Editor und die Leseansicht alter Fassungen.
+ * Mit `changesAgainst` werden Unterschiede zu diesem (freigegebenen) Text markiert.
+ */
+export function createExtensions(articleId: number, changesAgainst?: { baseline: string | null }) {
   return [
+    ...(changesAgainst ? [unapprovedBlocks(changesAgainst.baseline)] : []),
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
       link: { openOnClick: false, autolink: true, defaultProtocol: 'https' }
@@ -47,10 +105,12 @@ export function parseContent(content: string | null): object | string {
   }
 }
 
-export function Editor({ articleId, content, editable, onStatus }: Props): React.JSX.Element {
+export function Editor({ articleId, content, editable, onStatus, unapproved = null, baseline = null }: Props): React.JSX.Element {
   const latest = useRef<{ json: string; text: string } | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const [extensions] = useState(() => createExtensions(articleId))
+  const [extensions] = useState(() =>
+    createExtensions(articleId, unapproved === 'changes' ? { baseline } : undefined)
+  )
 
   // Speichern: entprellt, beim Artikelwechsel/Schließen sofort.
   const flush = useRef(async (): Promise<void> => {})
@@ -128,8 +188,14 @@ export function Editor({ articleId, content, editable, onStatus }: Props): React
   useEffect(() => () => void flush.current(), [])
 
   return (
-    <div className={`editor ${editable ? 'editable' : 'readonly'}`}>
+    <div className={`editor ${editable ? 'editable' : 'readonly'} ${unapproved ? `unapproved unapproved-${unapproved}` : ''}`}>
       {editable && editor && <Toolbar editor={editor} />}
+      {unapproved && (
+        <div className="unapproved-label">
+          <ShieldAlert size={14} />
+          {unapproved === 'all' ? 'Text noch nicht freigegeben' : 'Gelb markierte Absätze sind noch nicht freigegeben'}
+        </div>
+      )}
       <EditorContent editor={editor} className="editor-content" />
     </div>
   )

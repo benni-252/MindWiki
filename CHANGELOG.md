@@ -2,6 +2,23 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.4.0
+
+**Neu: Updates direkt aus der App**
+- Die installierte Version prüft beim Start und alle paar Stunden, ob es eine neue Version gibt. Oben erscheint dann „Update … verfügbar“; ein Klick lädt sie herunter und installiert sie mit einem kurzen Neustart. Deine Daten bleiben erhalten.
+- Von Hand: *Hilfe › Nach Updates suchen…*. Die portable Version zeigt einen Hinweis und öffnet die Download-Seite.
+- Diese Version musst du einmal von Hand installieren – ab dann kommen Updates von selbst.
+
+**Freigaben besser sichtbar**
+- Noch nicht freigegebener Text ist markiert: bei neuen Artikeln der ganze Text, im eigenen Entwurf die geänderten Absätze.
+- Oben steht „X Freigaben offen“ – orange, wenn etwas auf dich wartet, blau für deine eigenen Entwürfe.
+
+**Download**
+- `MindWiki-Setup-1.4.0.exe` – Installer (mit automatischen Updates)
+- `MindWiki-1.4.0-portable.exe` – ohne Installation starten
+
+**Hinweis:** Die .exe ist nicht signiert. Windows SmartScreen fragt beim ersten Start nach – „Weitere Informationen“ → „Trotzdem ausführen“.
+
 ## 1.3.0
 
 **Neu: Beispiel-Wiki**

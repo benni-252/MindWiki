@@ -143,8 +143,13 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
     !!summary &&
     (summary.approved || (!!summary.createdBy && summary.createdBy !== userName))
   const contentReadOnly = readMode || locked
+  // Noch nicht freigegebener Text: neuer Artikel komplett, im eigenen Entwurf die geänderten Absätze
+  const unapproved =
+    contentId !== id ? 'changes' : tree?.approvalRequired && summary && !summary.approved ? 'all' : null
 
   const [article, setArticle] = useState<Article | null | undefined>(undefined)
+  // freigegebener Text, wenn ich in meinem Entwurf arbeite (für die Markierung geänderter Absätze)
+  const [baseline, setBaseline] = useState<string | null>(null)
   const [fields, setFields] = useState<ArticleField[]>([])
   const [status, setStatus] = useState<SaveStatus>('saved')
   const loadedId = useRef<number | null>(null)
@@ -159,9 +164,14 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
       setStatus('saved')
     }
     loadedId.current = contentId
-    Promise.all([wiki.getArticle(contentId), wiki.getFields(contentId)])
-      .then(([a, f]) => {
+    Promise.all([
+      wiki.getArticle(contentId),
+      wiki.getFields(contentId),
+      contentId !== id ? wiki.getArticle(id) : Promise.resolve(null)
+    ])
+      .then(([a, f, approved]) => {
         if (!alive) return
+        setBaseline(approved?.content ?? null)
         setArticle(a)
         setFields(f)
         setShownVersion(version)
@@ -249,11 +259,13 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
               <FactSheet articleId={article.id} fields={fields} readMode={contentReadOnly} reload={reloadFields} />
               <Dependencies id={id} readMode={readMode} />
               <Editor
-                key={`editor-${article.id}-${shownVersion}`}
+                key={`editor-${article.id}-${shownVersion}-${unapproved ?? ''}`}
                 articleId={article.id}
                 content={article.content}
                 editable={!contentReadOnly}
                 onStatus={setStatus}
+                unapproved={unapproved}
+                baseline={baseline}
               />
               <ChecklistSection
                 key={`checklists-${article.id}-${shownVersion}`}

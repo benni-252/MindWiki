@@ -156,6 +156,7 @@ mark {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
   height: 32px;
   padding: 0 14px;
   border-radius: 6px;
@@ -2555,4 +2556,72 @@ input.fs-label::-webkit-calendar-picker-indicator {
 }
 .sample-bar > svg {
   color: var(--accent);
+}
+
+/* ---------- Freigaben-Anzeige, Updates, nicht freigegebener Text ---------- */
+
+.approval-pill,
+.update-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.approval-pill.for-me {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+  color: color-mix(in srgb, var(--warning) 80%, var(--text));
+}
+.approval-pill.mine {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.update-pill {
+  border-color: var(--success);
+  background: var(--success-soft);
+  color: var(--success);
+  font-weight: 600;
+}
+.approval-pill:hover,
+.update-pill:hover {
+  filter: brightness(0.97);
+}
+.update-progress {
+  margin: 8px 0 4px;
+}
+
+.editor.unapproved {
+  position: relative;
+}
+.editor.unapproved-all .editor-content {
+  border-left: 3px solid var(--warning);
+  padding-left: 12px;
+  background: color-mix(in srgb, var(--warning-soft) 55%, transparent);
+  border-radius: 0 8px 8px 0;
+}
+.unapproved-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--warning-soft);
+  color: color-mix(in srgb, var(--warning) 80%, var(--text));
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.prose .unapproved-block {
+  margin-left: -11px;
+  padding-left: 8px;
+  border-left: 3px solid var(--warning);
+  border-radius: 0 4px 4px 0;
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
 }

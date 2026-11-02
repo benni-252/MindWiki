@@ -1,10 +1,20 @@
 import { create } from 'zustand'
 import { findTemplate } from '../../shared/templates'
-import type { DbInfo, TreeData } from '../../shared/types'
+import type { DbInfo, TreeData, UpdateState } from '../../shared/types'
 import { errorMessage, flushPending, hasPending, wiki } from './api'
 import { countSubtree, impactOf, indexTree, pathTo, type SeenState } from './treeUtils'
 
-export type DialogKind = 'search' | 'trash' | 'outages' | 'changes' | 'user-name' | 'approvals' | 'shortcuts' | 'about' | null
+export type DialogKind =
+  | 'search'
+  | 'trash'
+  | 'outages'
+  | 'changes'
+  | 'user-name'
+  | 'approvals'
+  | 'update'
+  | 'shortcuts'
+  | 'about'
+  | null
 
 export interface ConfirmOptions {
   title: string
@@ -43,6 +53,8 @@ interface State {
   userName: string
   /** Wann welcher Artikel zuletzt angesehen wurde (für „neu geändert“) */
   seen: SeenState | null
+  /** Neue Version auf GitHub? */
+  update: UpdateState
 
   loadAll(): Promise<void>
   loadTree(): Promise<void>
@@ -87,6 +99,7 @@ interface State {
   approve(id: number): Promise<void>
   reject(id: number, reason: string | null): Promise<void>
   setApprovalRequired(on: boolean): Promise<void>
+  setUpdate(update: UpdateState): void
 }
 
 function readPref(key: string, fallback: boolean): boolean {
@@ -202,10 +215,17 @@ export const useWiki = create<State>((set, get) => {
     articleVersion: 0,
     userName: '',
     seen: null,
+    update: { status: 'idle', current: __APP_VERSION__ },
 
     async loadAll() {
-      const [tree, dbInfo, userName] = await Promise.all([wiki.getTree(), wiki.getDbInfo(), wiki.getUserName()])
+      const [tree, dbInfo, userName, update] = await Promise.all([
+        wiki.getTree(),
+        wiki.getDbInfo(),
+        wiki.getUserName(),
+        wiki.getUpdateState()
+      ])
       set({
+        update,
         tree,
         dbInfo,
         userName,
@@ -426,6 +446,8 @@ export const useWiki = create<State>((set, get) => {
         get().toast(errorMessage(err), 'error')
       }
     },
+
+    setUpdate: (update) => set({ update }),
 
     startDraft: (id) => decide(() => wiki.startDraft(id), null),
     discardDraft: (id) => decide(() => wiki.discardDraft(id), 'Entwurf verworfen.'),

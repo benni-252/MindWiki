@@ -26,3 +26,8 @@ nsis:
   artifactName: MindWiki-Setup-${version}.${ext}
 portable:
   artifactName: MindWiki-${version}-portable.${ext}
+# Updates: Die App liest latest.yml aus den GitHub-Releases (der Workflow lädt sie mit hoch).
+publish:
+  provider: github
+  owner: benni-252
+  repo: MindWiki

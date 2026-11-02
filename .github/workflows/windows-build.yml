@@ -49,6 +49,13 @@ jobs:
           npm run build
           npx electron-builder --win --publish never
 
+      - name: Update-Informationen prüfen
+        shell: bash
+        run: |
+          # latest.yml sagt der installierten App, dass es eine neue Version gibt
+          test -f dist/latest.yml
+          cat dist/latest.yml
+
       - name: .exe als Artifact hochladen
         uses: actions/upload-artifact@v4
         with:
@@ -66,7 +73,7 @@ jobs:
         run: |
           version=$(node -p "require('./package.json').version")
           tag="v$version"
-          files=("dist/MindWiki-Setup-$version.exe" "dist/MindWiki-$version-portable.exe")
+          files=("dist/MindWiki-Setup-$version.exe" "dist/MindWiki-$version-portable.exe" "dist/MindWiki-Setup-$version.exe.blockmap" "dist/latest.yml")
           if gh release view "$tag" > /dev/null 2>&1; then
             echo "Release $tag gibt es schon – ersetze die .exe-Dateien durch den aktuellen Stand."
             gh release upload "$tag" "${files[@]}" --clobber
@@ -84,4 +91,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
-            dist/MindWiki-Setup-*.exe dist/MindWiki-*-portable.exe --clobber
+            dist/MindWiki-Setup-*.exe dist/MindWiki-*-portable.exe dist/MindWiki-Setup-*.exe.blockmap dist/latest.yml --clobber
