@@ -1,0 +1,57 @@
+# Baut die Windows-Programme (Installer + portable .exe) auf GitHub.
+#
+# - Manuell: Reiter "Actions" → "Windows-Build" → "Run workflow".
+#   Die .exe-Dateien liegen danach unten im Lauf unter "Artifacts" als ZIP.
+# - Automatisch: Unter "Releases" ein neues Release veröffentlichen (z. B. Tag v1.0.0).
+#   Die .exe-Dateien werden dann direkt an das Release angehängt.
+name: Windows-Build
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Typen prüfen und testen
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Windows-Programme bauen
+        run: |
+          npm run build
+          npx electron-builder --win --publish never
+
+      - name: .exe als Artifact hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: MindWiki-Windows
+          path: |
+            dist/MindWiki-Setup-*.exe
+            dist/MindWiki-*-portable.exe
+          if-no-files-found: error
+
+      - name: .exe an das Release anhängen
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            dist/MindWiki-Setup-*.exe dist/MindWiki-*-portable.exe --clobber
