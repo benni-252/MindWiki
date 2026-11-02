@@ -12,6 +12,7 @@ import {
   type ChecklistItem,
   type ChecklistRun,
   type DependencyEdge,
+  type DraftDiff,
   type LinkEdge,
   type RecentChange,
   type RunSnapshotItem,
@@ -20,6 +21,7 @@ import {
   type TrashEntry,
   type TreeData
 } from '../shared/types'
+import { diffLines } from '../shared/diff'
 import { docText, extractArticleLinks } from './links'
 
 type Row = Record<string, unknown>
@@ -124,13 +126,325 @@ export class WikiStore {
     return row?.p ?? 0
   }
 
-  private requireLiveArticle(id: number): { id: number; parent_id: number | null } {
-    const row = this.get<{ id: number; parent_id: number | null }>(
-      'SELECT id, parent_id FROM articles WHERE id = ? AND deleted_at IS NULL',
+  /** Lebender Artikel; Entwürfe (Änderungsvorschläge) nur mit `allowDraft`. */
+  private requireLiveArticle(id: number, allowDraft = false): { id: number; parent_id: number | null } {
+    const row = this.get<{ id: number; parent_id: number | null; draft_of: number | null }>(
+      'SELECT id, parent_id, draft_of FROM articles WHERE id = ? AND deleted_at IS NULL',
       id
     )
-    if (!row) throw new WikiError('Artikel nicht gefunden.')
+    if (!row || (!allowDraft && row.draft_of != null)) throw new WikiError('Artikel nicht gefunden.')
     return row
+  }
+
+  // ---------- Freigaben ----------
+
+  approvalRequired(): boolean {
+    return this.get<{ value: string }>("SELECT value FROM meta WHERE key = 'approval_required'")?.value === '1'
+  }
+
+  /**
+   * Wohin eine inhaltliche Änderung an Artikel `id` geschrieben wird. Bei Freigabe-Pflicht:
+   * neue Artikel nur von ihrem Autor, freigegebene Artikel nur über einen Entwurf
+   * (mit `autoDraft` wird der eigene Entwurf dafür angelegt bzw. weiterverwendet).
+   */
+  private editTarget(id: number, autoDraft: boolean): number {
+    const a = this.get<{ title: string; draft_of: number | null; approved_at: string | null; created_by: string | null }>(
+      'SELECT title, draft_of, approved_at, created_by FROM articles WHERE id = ?',
+      id
+    )
+    if (!a) throw new WikiError('Artikel nicht gefunden.')
+    if (a.draft_of != null) {
+      if (a.created_by !== this.author) throw new WikiError(`Das ist der Entwurf von ${a.created_by ?? 'jemand anderem'}.`)
+      return id
+    }
+    if (!this.approvalRequired()) return id
+    if (a.approved_at == null) {
+      if (a.created_by && a.created_by !== this.author) {
+        throw new WikiError(`${q(a.title)} ist ein Entwurf von ${a.created_by} und kann erst nach der Freigabe geändert werden.`)
+      }
+      return id
+    }
+    if (!autoDraft) {
+      throw new WikiError('Änderungen an freigegebenen Artikeln brauchen eine Freigabe – bitte zuerst „Bearbeiten“ wählen.')
+    }
+    return this.startDraft(id)
+  }
+
+  private draftOf(id: number): { id: number; created_by: string; created_at: string } | undefined {
+    return this.get<{ id: number; created_by: string; created_at: string }>(
+      'SELECT id, created_by, created_at FROM articles WHERE draft_of = ?',
+      id
+    )
+  }
+
+  /** Kopiert einen freigegebenen Artikel (Text, Titel, Symbol, Steckbrief, Abläufe) in einen Entwurf. */
+  startDraft(id: number): number {
+    this.requireLiveArticle(id)
+    const existing = this.draftOf(id)
+    if (existing) {
+      if (existing.created_by !== this.author) {
+        throw new WikiError(
+          `${existing.created_by} hat bereits Änderungen an diesem Artikel vorgeschlagen. Bitte erst freigeben oder ablehnen.`
+        )
+      }
+      return existing.id
+    }
+    const src = this.get<{ title: string; content: string | null; content_text: string; color: string | null; icon: string | null }>(
+      'SELECT title, content, content_text, color, icon FROM articles WHERE id = ?',
+      id
+    )!
+    return this.tx(() => {
+      // Der Entwurf hängt unter dem Original: So wandert er mit in den Papierkorb und wieder zurück.
+      const draft = this.run(
+        `INSERT INTO articles (parent_id, title, content, content_text, color, icon, created_by, draft_of)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        id,
+        src.title,
+        src.content,
+        src.content_text,
+        src.color,
+        src.icon,
+        this.author,
+        id
+      )
+      this.run(
+        `INSERT INTO article_fields (article_id, label, value, position)
+         SELECT ?, label, value, position FROM article_fields WHERE article_id = ? ORDER BY position, id`,
+        draft,
+        id
+      )
+      for (const list of this.all<{ id: number; title: string; position: number }>(
+        'SELECT id, title, position FROM checklists WHERE article_id = ? ORDER BY position, id',
+        id
+      )) {
+        const copy = this.run(
+          'INSERT INTO checklists (article_id, title, position, source_id) VALUES (?, ?, ?, ?)',
+          draft,
+          list.title,
+          list.position,
+          list.id
+        )
+        this.run(
+          `INSERT INTO checklist_items (checklist_id, text, position)
+           SELECT ?, text, position FROM checklist_items WHERE checklist_id = ? ORDER BY position, id`,
+          copy,
+          list.id
+        )
+      }
+      return draft
+    })
+  }
+
+  discardDraft(id: number): void {
+    const draft = this.draftOf(id)
+    if (!draft) return
+    if (draft.created_by !== this.author) throw new WikiError('Nur wer den Entwurf angelegt hat, kann ihn verwerfen.')
+    this.run('DELETE FROM articles WHERE id = ?', draft.id)
+  }
+
+  approve(id: number): void {
+    const a = this.get<{ approved_at: string | null; created_by: string | null; draft_of: number | null }>(
+      'SELECT approved_at, created_by, draft_of FROM articles WHERE id = ? AND deleted_at IS NULL',
+      id
+    )
+    if (!a || a.draft_of != null) throw new WikiError('Artikel nicht gefunden.')
+    if (a.approved_at == null) {
+      if (a.created_by === this.author) throw new WikiError('Eigene Artikel kann nur jemand anderes freigeben.')
+      this.tx(() => {
+        this.run('UPDATE articles SET approved_at = ?, approved_by = ? WHERE id = ?', this.now(), this.author, id)
+        this.log(id, 'approval', a.created_by ? `Neuen Artikel von ${a.created_by} freigegeben` : 'Freigegeben')
+      })
+      return
+    }
+    const draft = this.draftOf(id)
+    if (!draft) throw new WikiError('Es gibt nichts freizugeben.')
+    if (draft.created_by === this.author) throw new WikiError('Eigene Änderungen kann nur jemand anderes freigeben.')
+    this.mergeDraft(id, draft.id, `Änderungen von ${draft.created_by} freigegeben`)
+  }
+
+  reject(id: number, reason: string | null): void {
+    const a = this.get<{ approved_at: string | null; created_by: string | null; draft_of: number | null }>(
+      'SELECT approved_at, created_by, draft_of FROM articles WHERE id = ? AND deleted_at IS NULL',
+      id
+    )
+    if (!a || a.draft_of != null) throw new WikiError('Artikel nicht gefunden.')
+    const why = reason?.trim() ? `: ${q(reason, 120)}` : ''
+    if (a.approved_at == null) {
+      if (a.created_by === this.author) throw new WikiError('Eigene Artikel kann nur jemand anderes ablehnen.')
+      this.tx(() => {
+        this.log(id, 'approval', `Neuen Artikel von ${a.created_by ?? '?'} abgelehnt${why}`)
+        this.deleteArticle(id)
+      })
+      return
+    }
+    const draft = this.draftOf(id)
+    if (!draft) throw new WikiError('Es gibt nichts abzulehnen.')
+    if (draft.created_by === this.author) throw new WikiError('Eigene Änderungen kann nur jemand anderes ablehnen.')
+    const content = this.get<{ content: string | null }>('SELECT content FROM articles WHERE id = ?', draft.id)?.content ?? null
+    this.tx(() => {
+      // Der abgelehnte Text bleibt im Verlauf erhalten
+      this.log(id, 'approval', `Änderungen von ${draft.created_by} abgelehnt${why}`, content)
+      this.run('DELETE FROM articles WHERE id = ?', draft.id)
+    })
+  }
+
+  /** Überträgt einen Entwurf in den freigegebenen Artikel und löscht den Entwurf. */
+  private mergeDraft(id: number, draftId: number, summary: string): void {
+    const d = this.get<{ title: string; content: string | null; content_text: string; icon: string | null }>(
+      'SELECT title, content, content_text, icon FROM articles WHERE id = ?',
+      draftId
+    )!
+    this.tx(() => {
+      this.run(
+        'UPDATE articles SET title = ?, content = ?, content_text = ?, icon = ?, updated_at = ? WHERE id = ?',
+        d.title,
+        d.content,
+        d.content_text,
+        d.icon,
+        this.now(),
+        id
+      )
+      this.syncLinks(id, d.content)
+
+      this.run('DELETE FROM article_fields WHERE article_id = ?', id)
+      this.run('UPDATE article_fields SET article_id = ? WHERE article_id = ?', id, draftId)
+
+      // Abläufe: bestehende behalten (samt Protokoll), Schritte nur bei Änderungen ersetzen
+      const lists = this.all<{ id: number; title: string; position: number; source_id: number | null }>(
+        'SELECT id, title, position, source_id FROM checklists WHERE article_id = ?',
+        draftId
+      )
+      const kept = new Set(lists.map((l) => l.source_id).filter((x): x is number => x != null))
+      for (const old of this.all<{ id: number }>('SELECT id FROM checklists WHERE article_id = ?', id)) {
+        if (!kept.has(old.id)) this.run('DELETE FROM checklists WHERE id = ?', old.id)
+      }
+      const steps = (listId: number): string =>
+        this.all<{ text: string }>('SELECT text FROM checklist_items WHERE checklist_id = ? ORDER BY position, id', listId)
+          .map((i) => i.text)
+          .join('\n')
+      for (const list of lists) {
+        const target = list.source_id != null ? this.get<{ id: number }>('SELECT id FROM checklists WHERE id = ? AND article_id = ?', list.source_id, id) : undefined
+        if (!target) {
+          this.run('UPDATE checklists SET article_id = ?, source_id = NULL WHERE id = ?', id, list.id)
+          continue
+        }
+        this.run('UPDATE checklists SET title = ?, position = ? WHERE id = ?', list.title, list.position, target.id)
+        if (steps(target.id) !== steps(list.id)) {
+          this.run('DELETE FROM checklist_items WHERE checklist_id = ?', target.id)
+          this.run('UPDATE checklist_items SET checklist_id = ? WHERE checklist_id = ?', target.id, list.id)
+        }
+        this.run('DELETE FROM checklists WHERE id = ?', list.id)
+      }
+
+      // Was im Entwurf geändert wurde, erscheint im Verlauf des Artikels
+      this.run('UPDATE changes SET article_id = ? WHERE article_id = ?', id, draftId)
+      this.run('DELETE FROM articles WHERE id = ?', draftId)
+      this.log(id, 'approval', summary)
+    })
+  }
+
+  private syncLinks(id: number, content: string | null): boolean {
+    const wanted = extractArticleLinks(content).filter(
+      (to) => to !== id && this.get('SELECT 1 FROM articles WHERE id = ? AND draft_of IS NULL', to) !== undefined
+    )
+    const current = this.all<{ to_id: number }>('SELECT to_id FROM links WHERE from_id = ?', id).map((r) => r.to_id)
+    const same = wanted.length === current.length && wanted.every((to) => current.includes(to))
+    if (!same) {
+      this.run('DELETE FROM links WHERE from_id = ?', id)
+      const insert = this.db.prepare('INSERT INTO links (from_id, to_id) VALUES (?, ?)')
+      for (const to of wanted) insert.run(id, to)
+    }
+    return !same
+  }
+
+  getDraftDiff(id: number): DraftDiff | null {
+    const draft = this.draftOf(id)
+    if (!draft) return null
+    const row = (x: number) =>
+      this.get<{ title: string; content: string | null; icon: string | null }>('SELECT title, content, icon FROM articles WHERE id = ?', x)!
+    const before = row(id)
+    const after = row(draft.id)
+
+    const fieldMap = (x: number) =>
+      new Map(this.getFields(x).map((f) => [f.label.toLocaleLowerCase('de'), f] as const))
+    const oldFields = fieldMap(id)
+    const newFields = fieldMap(draft.id)
+    const mask = (label: string, value: string | null): string | null =>
+      value != null && value !== '' && SECRET_LABEL.test(label) ? '••••••' : value
+    const fields: DraftDiff['fields'] = []
+    for (const [key, f] of newFields) {
+      const old = oldFields.get(key)
+      if (!old) fields.push({ label: f.label, before: null, after: mask(f.label, f.value) })
+      else if (old.value !== f.value || old.label !== f.label) {
+        fields.push({ label: f.label, before: mask(old.label, old.value), after: mask(f.label, f.value) })
+      }
+    }
+    for (const [key, f] of oldFields) {
+      if (!newFields.has(key)) fields.push({ label: f.label, before: mask(f.label, f.value), after: null })
+    }
+
+    const checklists: DraftDiff['checklists'] = []
+    const oldLists = this.getChecklists(id)
+    const newLists = this.getChecklists(draft.id)
+    const sources = new Map(
+      this.all<{ id: number; source_id: number | null }>('SELECT id, source_id FROM checklists WHERE article_id = ?', draft.id).map(
+        (r) => [r.id, r.source_id] as const
+      )
+    )
+    for (const list of newLists) {
+      const old = oldLists.find((o) => o.id === sources.get(list.id))
+      if (!old) {
+        checklists.push({ title: list.title, change: 'added', detail: list.items.map((i) => `+ ${i.text}`) })
+        continue
+      }
+      const detail: string[] = []
+      if (old.title !== list.title) detail.push(`Titel: ${q(old.title)} → ${q(list.title)}`)
+      for (const line of diffLines(
+        old.items.map((i) => i.text),
+        list.items.map((i) => i.text)
+      )) {
+        if (line.kind !== 'same') detail.push(`${line.kind === 'added' ? '+' : '−'} ${line.text}`)
+      }
+      if (detail.length > 0) checklists.push({ title: list.title, change: 'changed', detail })
+    }
+    for (const old of oldLists) {
+      if (![...sources.values()].includes(old.id)) checklists.push({ title: old.title, change: 'removed', detail: [] })
+    }
+
+    const textBefore = docText(before.content)
+    const textAfter = docText(after.content)
+    return {
+      author: draft.created_by,
+      since: draft.created_at,
+      title: before.title !== after.title ? { before: before.title, after: after.title } : null,
+      iconChanged: before.icon !== after.icon,
+      fields,
+      checklists,
+      text: textBefore !== textAfter ? { before: textBefore, after: textAfter } : null
+    }
+  }
+
+  /** Schaltet die Freigabe-Pflicht für alle um; beim Ausschalten werden offene Entwürfe übernommen. */
+  setApprovalRequired(on: boolean): void {
+    if (on === this.approvalRequired()) return
+    this.tx(() => {
+      if (!on) {
+        const note = 'übernommen (Freigabe-Pflicht ausgeschaltet)'
+        for (const a of this.all<{ id: number; created_by: string | null }>(
+          'SELECT id, created_by FROM articles WHERE approved_at IS NULL AND draft_of IS NULL'
+        )) {
+          this.run('UPDATE articles SET approved_at = ?, approved_by = ? WHERE id = ?', this.now(), this.author, a.id)
+          this.log(a.id, 'approval', `Neuer Artikel von ${a.created_by ?? '?'} ${note}`)
+        }
+        for (const d of this.all<{ id: number; draft_of: number; created_by: string }>(
+          'SELECT id, draft_of, created_by FROM articles WHERE draft_of IS NOT NULL'
+        )) {
+          this.mergeDraft(d.draft_of, d.id, `Änderungen von ${d.created_by} ${note}`)
+        }
+      }
+      this.run("INSERT OR REPLACE INTO meta (key, value) VALUES ('approval_required', ?)", on ? '1' : '0')
+      this.log(this.rootId(), 'approval', on ? 'Freigabe-Pflicht eingeschaltet' : 'Freigabe-Pflicht ausgeschaltet')
+    })
   }
 
   private log(articleId: number, kind: ChangeKind, summary: string, oldContent: string | null = null): void {
@@ -174,12 +488,17 @@ export class WikiStore {
 
   getTree(): TreeData {
     const articles = this.all<Row>(
-      `SELECT a.id, a.parent_id, a.title, a.position, a.color, a.icon, a.collapsed,
+      `SELECT a.id, a.parent_id, a.position, a.color, a.collapsed,
+              CASE WHEN d.created_by = ? THEN d.title ELSE a.title END AS title,
+              CASE WHEN d.created_by = ? THEN d.icon ELSE a.icon END AS icon,
+              a.approved_at IS NOT NULL AS approved, a.created_by,
+              d.id AS draft_id, d.created_by AS draft_by, d.created_at AS draft_at,
               a.outage_since, a.outage_note,
               a.content_text <> '' AS has_text,
               COALESCE(c.total, 0) AS total, COALESCE(c.done, 0) AS done,
               lc.at AS last_at, lc.author AS last_by, oc.at AS other_at, oc.author AS other_by
          FROM articles a
+         LEFT JOIN articles d ON d.draft_of = a.id
          LEFT JOIN (SELECT article_id, MAX(at) AS at, author FROM changes GROUP BY article_id) lc
            ON lc.article_id = a.id
          LEFT JOIN (SELECT article_id, MAX(at) AS at, author FROM changes WHERE author <> ? GROUP BY article_id) oc
@@ -189,8 +508,10 @@ export class WikiStore {
              FROM checklists cl JOIN checklist_items i ON i.checklist_id = cl.id
             GROUP BY cl.article_id
          ) c ON c.article_id = a.id
-        WHERE a.deleted_at IS NULL
+        WHERE a.deleted_at IS NULL AND a.draft_of IS NULL
         ORDER BY a.position, a.id`,
+      this.author,
+      this.author,
       this.author
     ).map(
       (r): ArticleSummary => ({
@@ -209,14 +530,19 @@ export class WikiStore {
         lastChangeAt: (r.last_at as string | null) ?? null,
         lastChangeBy: (r.last_by as string | null) ?? null,
         lastOtherChangeAt: (r.other_at as string | null) ?? null,
-        lastOtherChangeBy: (r.other_by as string | null) ?? null
+        lastOtherChangeBy: (r.other_by as string | null) ?? null,
+        approved: r.approved === 1,
+        createdBy: (r.created_by as string | null) ?? null,
+        draftId: (r.draft_id as number | null) ?? null,
+        draftBy: (r.draft_by as string | null) ?? null,
+        draftAt: (r.draft_at as string | null) ?? null
       })
     )
     const links = this.all<Row>(
       `SELECT l.from_id, l.to_id FROM links l
          JOIN articles f ON f.id = l.from_id
          JOIN articles t ON t.id = l.to_id
-        WHERE f.deleted_at IS NULL AND t.deleted_at IS NULL`
+        WHERE f.deleted_at IS NULL AND t.deleted_at IS NULL AND f.draft_of IS NULL AND t.draft_of IS NULL`
     ).map((r): LinkEdge => ({ fromId: r.from_id as number, toId: r.to_id as number }))
     const dependencies = this.all<Row>(
       `SELECT d.article_id, d.depends_on_id FROM dependencies d
@@ -224,7 +550,7 @@ export class WikiStore {
          JOIN articles b ON b.id = d.depends_on_id
         WHERE a.deleted_at IS NULL AND b.deleted_at IS NULL`
     ).map((r): DependencyEdge => ({ articleId: r.article_id as number, dependsOnId: r.depends_on_id as number }))
-    return { rootId: this.rootId(), articles, links, dependencies }
+    return { rootId: this.rootId(), articles, links, dependencies, approvalRequired: this.approvalRequired() }
   }
 
   getArticle(id: number): Article | null {
@@ -264,7 +590,14 @@ export class WikiStore {
         position = this.nextPosition('articles', 'parent_id', parentId)
       }
       this.run('UPDATE articles SET collapsed = 0 WHERE id = ?', parentId)
-      const id = this.run('INSERT INTO articles (parent_id, title, position) VALUES (?, ?, ?)', parentId, clean, position)
+      const id = this.run(
+        'INSERT INTO articles (parent_id, title, position, created_by, approved_at) VALUES (?, ?, ?, ?, ?)',
+        parentId,
+        clean,
+        position,
+        this.author,
+        this.approvalRequired() ? null : this.now()
+      )
       if (template) this.silently(() => this.fillFromTemplate(id, template))
       this.log(id, 'create', template ? `Angelegt aus der Vorlage ${q(template.name)}` : 'Angelegt')
       return id
@@ -281,9 +614,10 @@ export class WikiStore {
    * Ergänzt einen Artikel um die Bestandteile einer Vorlage, ohne Vorhandenes zu überschreiben:
    * Text nur wenn leer, Symbol nur wenn keins gesetzt, nur fehlende Felder, Abläufe zusätzlich.
    */
-  applyTemplate(id: number, templateId: string): void {
-    this.requireLiveArticle(id)
+  applyTemplate(articleId: number, templateId: string): void {
     const template = this.requireTemplate(templateId)
+    const id = this.editTarget(articleId, true)
+    this.requireLiveArticle(id, true)
     this.tx(() => {
       this.silently(() => this.fillFromTemplate(id, template))
       this.log(id, 'template', `Vorlage ${q(template.name)} angewendet`)
@@ -323,7 +657,7 @@ export class WikiStore {
 
   /** Speichert auch Artikel im Papierkorb, damit eine letzte Änderung beim Löschen nicht verloren geht. */
   saveArticleContent(id: number, content: string, text: string): SaveResult {
-    return this.writeContent(id, content, text, null)
+    return this.writeContent(this.editTarget(id, true), content, text, null)
   }
 
   /**
@@ -349,17 +683,8 @@ export class WikiStore {
         this.now(),
         id
       )
-      const wanted = extractArticleLinks(content).filter(
-        (to) => to !== id && this.get('SELECT 1 FROM articles WHERE id = ?', to) !== undefined
-      )
-      const current = this.all<{ to_id: number }>('SELECT to_id FROM links WHERE from_id = ?', id).map((r) => r.to_id)
-      const same = wanted.length === current.length && wanted.every((to) => current.includes(to))
-      if (!same) {
-        this.run('DELETE FROM links WHERE from_id = ?', id)
-        const insert = this.db.prepare('INSERT INTO links (from_id, to_id) VALUES (?, ?)')
-        for (const to of wanted) insert.run(id, to)
-      }
-      return { treeChanged: !same || (before.has_text === 1) !== (plain !== '') }
+      const linksChanged = this.syncLinks(id, content)
+      return { treeChanged: linksChanged || (before.has_text === 1) !== (plain !== '') }
     })
   }
 
@@ -389,8 +714,10 @@ export class WikiStore {
     )
   }
 
-  renameArticle(id: number, title: string): void {
+  renameArticle(articleId: number, title: string): void {
     const clean = title.trim() || UNTITLED
+    if (this.titleOf(articleId) === clean && !this.draftOf(articleId)) return
+    const id = this.editTarget(articleId, true)
     const old = this.titleOf(id)
     if (old === clean) return
     // Benennen direkt nach dem Anlegen ist Teil des Anlegens – kein eigener Verlaufseintrag
@@ -410,7 +737,8 @@ export class WikiStore {
     this.run('UPDATE articles SET color = ? WHERE id = ?', color, id)
   }
 
-  setArticleIcon(id: number, icon: string | null): void {
+  setArticleIcon(articleId: number, icon: string | null): void {
+    const id = this.editTarget(articleId, true)
     const old = this.get<{ icon: string | null }>('SELECT icon FROM articles WHERE id = ?', id)
     if (!old || old.icon === icon) return
     this.tx(() => {
@@ -456,7 +784,7 @@ export class WikiStore {
   }
 
   reorderArticle(id: number, direction: -1 | 1): void {
-    this.swap('articles', 'parent_id', id, direction, 'AND deleted_at IS NULL')
+    this.swap('articles', 'parent_id', id, direction, 'AND deleted_at IS NULL AND draft_of IS NULL')
   }
 
   /** Verschiebt den ganzen Ast in den Papierkorb. */
@@ -500,7 +828,7 @@ export class WikiStore {
 
     const hits: (SearchHit & { score: number })[] = []
     for (const r of this.all<{ id: number; title: string; content_text: string }>(
-      'SELECT id, title, content_text FROM articles WHERE deleted_at IS NULL'
+      'SELECT id, title, content_text FROM articles WHERE deleted_at IS NULL AND draft_of IS NULL'
     )) {
       const title = r.title.toLocaleLowerCase('de')
       const body = [fields.get(r.id), r.content_text, checks.get(r.id)].filter(Boolean).join(' · ')
@@ -600,6 +928,7 @@ export class WikiStore {
       `SELECT c.id, c.article_id, c.at, c.author, c.kind, c.summary, c.old_content IS NOT NULL AS has_version,
               a.title, a.deleted_at IS NOT NULL AS deleted
          FROM changes c JOIN articles a ON a.id = c.article_id
+        WHERE a.draft_of IS NULL
         ORDER BY c.at DESC, c.id DESC LIMIT ?`,
       Math.max(1, Math.min(2000, Math.floor(limit)))
     ).map((r) => ({ ...this.toChange(r), title: r.title as string, deleted: r.deleted === 1 }))
@@ -616,9 +945,9 @@ export class WikiStore {
       changeId
     )
     if (!change?.old_content) throw new WikiError('Diese Fassung ist nicht mehr gespeichert.')
-    this.requireLiveArticle(change.article_id)
+    this.requireLiveArticle(change.article_id, true)
     this.writeContent(
-      change.article_id,
+      this.editTarget(change.article_id, true),
       change.old_content,
       docText(change.old_content),
       `Text auf die Fassung vor der Änderung von ${change.author} (${formatStamp(change.at)}) zurückgesetzt`
@@ -642,7 +971,7 @@ export class WikiStore {
         this.get<{ n: number }>(
           `WITH RECURSIVE sub(id) AS (
              SELECT ? UNION ALL
-             SELECT a.id FROM articles a JOIN sub ON a.parent_id = sub.id WHERE a.deleted_at = ?
+             SELECT a.id FROM articles a JOIN sub ON a.parent_id = sub.id WHERE a.deleted_at = ? AND a.draft_of IS NULL
            ) SELECT COUNT(*) AS n FROM sub`,
           r.id,
           r.deleted_at
@@ -726,6 +1055,7 @@ export class WikiStore {
   }
 
   addField(articleId: number, label: string, value = ''): number {
+    this.editTarget(articleId, false)
     const cleanLabel = label.trim() || 'Feld'
     const cleanValue = value.trim()
     return this.tx(() => {
@@ -750,6 +1080,7 @@ export class WikiStore {
     const cleanLabel = label.trim() || 'Feld'
     const cleanValue = value.trim()
     if (!old || (old.label === cleanLabel && old.value === cleanValue)) return
+    this.editTarget(old.article_id, false)
     const parts: string[] = []
     if (old.label !== cleanLabel) parts.push(`Feld ${q(old.label)} umbenannt in ${q(cleanLabel)}`)
     if (old.value !== cleanValue) {
@@ -771,6 +1102,7 @@ export class WikiStore {
       id
     )
     if (!old) return
+    this.editTarget(old.article_id, false)
     this.tx(() => {
       this.run('DELETE FROM article_fields WHERE id = ?', id)
       const shown = old.value && !SECRET_LABEL.test(old.label) ? ` (war ${q(old.value)})` : ''
@@ -779,6 +1111,8 @@ export class WikiStore {
   }
 
   moveField(id: number, direction: -1 | 1): void {
+    const field = this.get<{ article_id: number }>('SELECT article_id FROM article_fields WHERE id = ?', id)
+    if (field) this.editTarget(field.article_id, false)
     this.swap('article_fields', 'article_id', id, direction)
   }
 
@@ -817,7 +1151,8 @@ export class WikiStore {
   }
 
   createChecklist(articleId: number, title: string): number {
-    this.requireLiveArticle(articleId)
+    this.requireLiveArticle(articleId, true)
+    this.editTarget(articleId, false)
     const clean = title.trim() || 'Ablauf'
     return this.tx(() => {
       const id = this.run(
@@ -835,6 +1170,7 @@ export class WikiStore {
     const clean = title.trim() || 'Ablauf'
     const list = this.checklistInfo(id)
     if (!list || list.title === clean) return
+    this.editTarget(list.article_id, false)
     this.tx(() => {
       this.run('UPDATE checklists SET title = ? WHERE id = ?', clean, id)
       this.log(list.article_id, 'checklist', `Ablauf ${q(list.title)} umbenannt in ${q(clean)}`)
@@ -844,6 +1180,7 @@ export class WikiStore {
   deleteChecklist(id: number): void {
     const list = this.checklistInfo(id)
     if (!list) return
+    this.editTarget(list.article_id, false)
     this.tx(() => {
       this.run('DELETE FROM checklists WHERE id = ?', id)
       this.log(list.article_id, 'checklist', `Ablauf ${q(list.title)} gelöscht`)
@@ -851,12 +1188,15 @@ export class WikiStore {
   }
 
   moveChecklist(id: number, direction: -1 | 1): void {
+    const list = this.checklistInfo(id)
+    if (list) this.editTarget(list.article_id, false)
     this.swap('checklists', 'article_id', id, direction)
   }
 
   addItem(checklistId: number, text: string): number {
     const clean = text.trim()
     const list = this.checklistInfo(checklistId)
+    if (list) this.editTarget(list.article_id, false)
     return this.tx(() => {
       const id = this.run(
         'INSERT INTO checklist_items (checklist_id, text, position) VALUES (?, ?, ?)',
@@ -881,6 +1221,7 @@ export class WikiStore {
     const clean = text.trim()
     const item = this.itemInfo(id)
     if (!item || item.text === clean) return
+    this.editTarget(item.article_id, false)
     this.tx(() => {
       this.run('UPDATE checklist_items SET text = ? WHERE id = ?', clean, id)
       this.log(item.article_id, 'checklist', `Schritt in ${q(item.title)} geändert: ${q(item.text)} → ${q(clean)}`)
@@ -899,6 +1240,7 @@ export class WikiStore {
   deleteItem(id: number): void {
     const item = this.itemInfo(id)
     if (!item) return
+    this.editTarget(item.article_id, false)
     this.tx(() => {
       this.run('DELETE FROM checklist_items WHERE id = ?', id)
       this.log(item.article_id, 'checklist', `Schritt ${q(item.text)} aus ${q(item.title)} entfernt`)
@@ -906,6 +1248,8 @@ export class WikiStore {
   }
 
   moveItem(id: number, direction: -1 | 1): void {
+    const item = this.itemInfo(id)
+    if (item) this.editTarget(item.article_id, false)
     this.swap('checklist_items', 'checklist_id', id, direction)
   }
 

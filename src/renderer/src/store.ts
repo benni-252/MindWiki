@@ -4,7 +4,7 @@ import type { DbInfo, TreeData } from '../../shared/types'
 import { errorMessage, flushPending, hasPending, wiki } from './api'
 import { countSubtree, impactOf, indexTree, pathTo, type SeenState } from './treeUtils'
 
-export type DialogKind = 'search' | 'trash' | 'outages' | 'changes' | 'user-name' | 'shortcuts' | 'about' | null
+export type DialogKind = 'search' | 'trash' | 'outages' | 'changes' | 'user-name' | 'approvals' | 'shortcuts' | 'about' | null
 
 export interface ConfirmOptions {
   title: string
@@ -82,6 +82,11 @@ interface State {
   setUserName(name: string): Promise<void>
   /** Ein anderer Rechner hat die Wiki-Datei geändert */
   externalChange(): Promise<void>
+  startDraft(id: number): Promise<void>
+  discardDraft(id: number): Promise<void>
+  approve(id: number): Promise<void>
+  reject(id: number, reason: string | null): Promise<void>
+  setApprovalRequired(on: boolean): Promise<void>
 }
 
 function readPref(key: string, fallback: boolean): boolean {
@@ -147,6 +152,30 @@ export const useWiki = create<State>((set, get) => {
       get().toast(errorMessage(err), 'error')
       return undefined
     }
+  }
+
+  function draftOf(id: number): number | null {
+    const tree = get().tree
+    return (tree && indexTree(tree).byId.get(id)?.draftId) ?? null
+  }
+
+  /** Hinweis, wenn eine Änderung in der Mind Map einen neuen Entwurf angelegt hat */
+  function announceDraft(id: number, before: number | null): void {
+    if (before == null && draftOf(id) != null) {
+      get().toast('Als Entwurf gespeichert – die anderen sehen die Änderung erst nach der Freigabe.')
+    }
+  }
+
+  /** Ändert den Freigabe-Stand und lädt den offenen Artikel neu. */
+  async function decide(action: () => Promise<unknown>, done: string | null): Promise<void> {
+    await flushPending()
+    const ok = await mutate(async () => {
+      await action()
+      return true
+    })
+    if (!ok) return
+    get().reloadArticle()
+    if (done) get().toast(done)
   }
 
   async function createAndRename(parentId: number, afterId: number | null, templateId: string | null): Promise<void> {
@@ -258,7 +287,9 @@ export const useWiki = create<State>((set, get) => {
     },
 
     async rename(id, title) {
+      const hadDraft = draftOf(id)
       await mutate(() => wiki.renameArticle(id, title))
+      announceDraft(id, hadDraft)
     },
 
     async setColor(id, color) {
@@ -266,7 +297,9 @@ export const useWiki = create<State>((set, get) => {
     },
 
     async setIcon(id, icon) {
+      const hadDraft = draftOf(id)
       await mutate(() => wiki.setArticleIcon(id, icon))
+      announceDraft(id, hadDraft)
     },
 
     async applyTemplate(id, templateId) {
@@ -393,6 +426,13 @@ export const useWiki = create<State>((set, get) => {
         get().toast(errorMessage(err), 'error')
       }
     },
+
+    startDraft: (id) => decide(() => wiki.startDraft(id), null),
+    discardDraft: (id) => decide(() => wiki.discardDraft(id), 'Entwurf verworfen.'),
+    approve: (id) => decide(() => wiki.approve(id), 'Freigegeben.'),
+    reject: (id, reason) => decide(() => wiki.reject(id, reason), 'Abgelehnt.'),
+    setApprovalRequired: (on) =>
+      decide(() => wiki.setApprovalRequired(on), on ? 'Freigabe-Pflicht eingeschaltet.' : 'Freigabe-Pflicht ausgeschaltet.'),
 
     async externalChange() {
       const before = get().tree

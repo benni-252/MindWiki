@@ -32,6 +32,7 @@ export async function runAction(action: MenuAction): Promise<void> {
       case 'outages':
       case 'changes':
       case 'user-name':
+      case 'approvals':
       case 'shortcuts':
       case 'about':
         s.setDialog(action)

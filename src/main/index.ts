@@ -45,6 +45,7 @@ function buildMenu(): void {
         item('Speicherort im Explorer zeigen', 'reveal-db'),
         { type: 'separator' },
         item('Mein Name im Verlauf…', 'user-name'),
+        item('Freigaben…', 'approvals'),
         { type: 'separator' },
         { role: 'quit', label: 'Beenden' }
       ]
