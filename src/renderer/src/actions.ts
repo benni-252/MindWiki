@@ -29,6 +29,7 @@ export async function runAction(action: MenuAction): Promise<void> {
         break
       case 'search':
       case 'trash':
+      case 'outages':
       case 'shortcuts':
       case 'about':
         s.setDialog(action)

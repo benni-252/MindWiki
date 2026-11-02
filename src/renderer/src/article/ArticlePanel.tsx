@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, Maximize2, Minimize2, PenLine, Shapes, X } from 'lucide-react'
+import { BookOpen, ChevronRight, Maximize2, Minimize2, PenLine, Shapes, TriangleAlert, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { TEMPLATES } from '../../../shared/templates'
 import type { Article, ArticleField } from '../../../shared/types'
@@ -8,8 +8,10 @@ import { IconPicker, NodeIcon } from '../icons'
 import { useWiki } from '../store'
 import { indexTree, pathTo } from '../treeUtils'
 import { Backlinks } from './Backlinks'
+import { Dependencies } from './Dependencies'
 import { Editor, type SaveStatus } from './Editor'
 import { FactSheet } from './FactSheet'
+import { OutageBanner } from './OutageBanner'
 
 const STATUS_TEXT: Record<SaveStatus, string> = {
   saved: 'Gespeichert',
@@ -170,6 +172,16 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
         </nav>
         <div className="panel-actions">
           <span className={`save-status ${status}`}>{STATUS_TEXT[status]}</span>
+          {summary && (
+            <button
+              className={`icon-btn ${summary.outageSince ? 'outage-active' : 'danger'}`}
+              title={summary.outageSince ? 'Störung beheben' : 'Störung melden'}
+              aria-pressed={summary.outageSince != null}
+              onClick={() => void (summary.outageSince ? s.resolveOutage(id) : s.reportOutage(id))}
+            >
+              <TriangleAlert size={17} />
+            </button>
+          )}
           <button
             className={`icon-btn ${readMode ? 'active' : ''}`}
             title={readMode ? 'Bearbeiten einschalten' : 'Lesemodus (schützt vor versehentlichen Änderungen)'}
@@ -202,8 +214,10 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
           {article === null && <p className="muted">Dieser Artikel existiert nicht mehr.</p>}
           {article && (
             <>
+              <OutageBanner id={article.id} readMode={readMode} />
               {isEmpty && !readMode && <TemplateChooser id={article.id} />}
               <FactSheet articleId={article.id} fields={fields} readMode={readMode} reload={reloadFields} />
+              <Dependencies id={article.id} readMode={readMode} />
               <Editor
                 key={`editor-${article.id}-${version}`}
                 articleId={article.id}

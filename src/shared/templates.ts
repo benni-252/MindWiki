@@ -34,7 +34,7 @@ export const TEMPLATES: ArticleTemplate[] = [
       'Wartungsfenster',
       'Backup'
     ],
-    sections: ['Überblick', 'Konfiguration', 'Abhängigkeiten', 'Bekannte Probleme'],
+    sections: ['Überblick', 'Konfiguration', 'Bekannte Probleme'],
     checklists: [
       {
         title: 'Wartung / Neustart',

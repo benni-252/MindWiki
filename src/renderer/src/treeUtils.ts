@@ -1,3 +1,4 @@
+import { computeImpact, type Impact } from '../../shared/impact'
 import type { ArticleSummary, TreeData } from '../../shared/types'
 
 export interface TreeIndex {
@@ -44,4 +45,25 @@ export function isInSubtree(tree: TreeData, candidate: number, ancestor: number)
 export function countSubtree(tree: TreeData, id: number): number {
   const { children } = indexTree(tree)
   return 1 + (children.get(id) ?? []).reduce((n, c) => n + countSubtree(tree, c.id), 0)
+}
+
+const impactCache = new WeakMap<TreeData, Impact>()
+
+/** Störungen und betroffene Artikel, pro Baum-Objekt nur einmal berechnet. */
+export function impactOf(tree: TreeData): Impact {
+  const hit = impactCache.get(tree)
+  if (hit) return hit
+  const outages = tree.articles.filter((a) => a.outageSince != null).map((a) => a.id)
+  const impact = computeImpact(outages, tree.dependencies)
+  impactCache.set(tree, impact)
+  return impact
+}
+
+/** Sortiert Artikel-IDs nach Titel (für Listen in der Oberfläche). */
+export function byTitle(tree: TreeData, ids: Iterable<number>): ArticleSummary[] {
+  const { byId } = indexTree(tree)
+  return [...ids]
+    .map((id) => byId.get(id))
+    .filter((a): a is ArticleSummary => !!a)
+    .sort((a, b) => a.title.localeCompare(b.title, 'de'))
 }

@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { MIGRATIONS, NotAWikiError, autoBackup, openDatabase } from '../src/main/db'
 import { extractArticleLinks } from '../src/main/links'
 import { WikiError, WikiStore } from '../src/main/store'
+import type { ArticleSummary } from '../src/shared/types'
 
 const doc = (...linkIds: number[]): string =>
   JSON.stringify({
@@ -309,5 +310,71 @@ describe('Bilder', () => {
     const id = Number(used.split('/').pop())
     expect(store.getImage(id)?.data).toEqual(new Uint8Array([1, 2, 3]))
     expect(() => store.saveImage('text/html', new Uint8Array())).toThrow(WikiError)
+  })
+})
+
+describe('Abhängigkeiten und Störungen', () => {
+  it('speichert Abhängigkeiten in beide Richtungen ohne Doppelte', () => {
+    const sql = store.createArticle(root, 'SQL-Server')
+    const app = store.createArticle(root, 'App-Server')
+    store.addDependency(app, sql)
+    store.addDependency(app, sql)
+    expect(store.getTree().dependencies).toEqual([{ articleId: app, dependsOnId: sql }])
+    expect(() => store.addDependency(app, app)).toThrow(WikiError)
+    store.removeDependency(app, sql)
+    expect(store.getTree().dependencies).toEqual([])
+  })
+
+  it('blendet Abhängigkeiten zu Artikeln im Papierkorb aus und löscht sie endgültig mit', () => {
+    const sql = store.createArticle(root, 'SQL-Server')
+    const app = store.createArticle(root, 'App-Server')
+    store.addDependency(app, sql)
+    store.deleteArticle(sql)
+    expect(store.getTree().dependencies).toEqual([])
+    expect(() => store.addDependency(app, sql)).toThrow(WikiError)
+    store.restoreArticle(sql)
+    expect(store.getTree().dependencies).toHaveLength(1)
+    store.deleteArticle(sql)
+    store.purgeArticle(sql)
+    expect(store.db.prepare('SELECT COUNT(*) AS n FROM dependencies').get()).toEqual({ n: 0 })
+  })
+
+  it('meldet und behebt Störungen, der Beginn bleibt beim Ändern der Notiz erhalten', () => {
+    const sw = store.createArticle(root, 'Core-Switch')
+    const summary = (): ArticleSummary => store.getTree().articles.find((a) => a.id === sw)!
+    expect(summary()).toMatchObject({ outageSince: null, outageNote: null })
+
+    store.reportOutage(sw, '  Netzteil defekt ')
+    const since = summary().outageSince
+    expect(since).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+    expect(summary().outageNote).toBe('Netzteil defekt')
+
+    store.reportOutage(sw, 'Techniker unterwegs')
+    expect(summary()).toMatchObject({ outageSince: since, outageNote: 'Techniker unterwegs' })
+    store.reportOutage(sw, '   ')
+    expect(summary().outageNote).toBeNull()
+
+    store.resolveOutage(sw)
+    expect(summary()).toMatchObject({ outageSince: null, outageNote: null })
+  })
+
+  it('aktualisiert eine Datenbank der Version 2', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mindwiki-'))
+    const file = path.join(dir, 'V2.db')
+    const old = new DatabaseSync(file)
+    old.exec(MIGRATIONS[0])
+    old.exec(MIGRATIONS[1])
+    old.exec("PRAGMA user_version = 2; INSERT INTO meta VALUES ('app', 'mindwiki'); INSERT INTO articles (title) VALUES ('V2')")
+    old.close()
+
+    const s = new WikiStore(openDatabase(file, 'V2'))
+    const a = s.createArticle(s.rootId(), 'A')
+    s.addDependency(a, s.rootId())
+    s.reportOutage(s.rootId(), null)
+    expect(s.getTree().dependencies).toHaveLength(1)
+    expect(s.getTree().articles.find((x) => x.id === s.rootId())?.outageSince).not.toBeNull()
+    expect(fs.existsSync(path.join(dir, 'Sicherungen', 'V2_vor-Update-v2.db'))).toBe(true)
+    s.db.close()
+    fs.rmSync(dir, { recursive: true, force: true })
   })
 })

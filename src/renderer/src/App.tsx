@@ -6,6 +6,7 @@ import { errorMessage, flushPending, wiki } from './api'
 import { ArticlePanel } from './article/ArticlePanel'
 import { ConfirmDialog } from './dialogs/ConfirmDialog'
 import { AboutDialog, ShortcutsDialog } from './dialogs/InfoDialogs'
+import { OutagesDialog } from './dialogs/OutagesDialog'
 import { SearchDialog } from './dialogs/SearchDialog'
 import { Toasts } from './dialogs/Toasts'
 import { TrashDialog } from './dialogs/TrashDialog'
@@ -127,6 +128,7 @@ export function App(): React.JSX.Element {
         </main>
         {dialog === 'search' && <SearchDialog />}
         {dialog === 'trash' && <TrashDialog />}
+        {dialog === 'outages' && <OutagesDialog />}
         {dialog === 'shortcuts' && <ShortcutsDialog />}
         {dialog === 'about' && <AboutDialog />}
         <ConfirmDialog />

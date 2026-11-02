@@ -1,6 +1,7 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
-import { ListChecks } from 'lucide-react'
+import { CircleAlert, ListChecks, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import type { ImpactStatus } from '../../../shared/impact'
 import type { ArticleSummary } from '../../../shared/types'
 import { NodeIcon } from '../icons'
 import { useWiki } from '../store'
@@ -13,6 +14,12 @@ export interface ArticleNodeData extends Record<string, unknown> {
   dropTarget: boolean
   renaming: boolean
   flash: boolean
+  /** Eigene Störung oder betroffen durch eine Störung */
+  status: ImpactStatus
+  /** Stärkster Status im eingeklappten Ast darunter */
+  hiddenStatus: ImpactStatus
+  /** Tooltip mit Titel und ggf. Störungsangaben */
+  tooltip: string
 }
 
 export type ArticleFlowNode = Node<ArticleNodeData, 'article'>
@@ -70,9 +77,10 @@ function RenameInput({ article }: { article: ArticleSummary }): React.JSX.Elemen
 }
 
 export function ArticleNode({ data }: NodeProps<ArticleFlowNode>): React.JSX.Element {
-  const { article, layout, selected, dropTarget, renaming, flash } = data
+  const { article, layout, selected, dropTarget, renaming, flash, status, hiddenStatus, tooltip } = data
   const depthClass = `depth-${Math.min(layout.depth, 3)}`
   const classes = ['mm-node', depthClass, `side-${layout.side}`]
+  if (status) classes.push(status)
   if (selected) classes.push('selected')
   if (dropTarget) classes.push('drop-target')
   if (flash) classes.push('flash')
@@ -82,7 +90,7 @@ export function ArticleNode({ data }: NodeProps<ArticleFlowNode>): React.JSX.Ele
     <div
       className={classes.join(' ')}
       style={{ '--branch': layout.color || undefined } as React.CSSProperties}
-      title={article.title}
+      title={tooltip}
     >
       <Handle type="target" position={Position.Left} id="l-t" isConnectable={false} />
       <Handle type="source" position={Position.Left} id="l-s" isConnectable={false} />
@@ -93,6 +101,8 @@ export function ArticleNode({ data }: NodeProps<ArticleFlowNode>): React.JSX.Ele
         <NodeIcon id={article.icon} size={layout.depth === 0 ? 20 : layout.depth === 1 ? 16 : 14} className="mm-icon" />
       )}
       {renaming ? <RenameInput article={article} /> : <span className="mm-title">{article.title}</span>}
+      {status === 'outage' && <TriangleAlert size={14} className="mm-status" aria-label="Störung" />}
+      {status === 'affected' && <CircleAlert size={14} className="mm-status" aria-label="Betroffen" />}
       {article.hasText && !renaming && <span className="mm-dot" title="Artikel enthält Text" />}
       {article.checkTotal > 0 && (
         <span className="mm-badge" title="Erledigte Ablaufschritte">
@@ -102,8 +112,12 @@ export function ArticleNode({ data }: NodeProps<ArticleFlowNode>): React.JSX.Ele
       )}
       {layout.childCount > 0 && layout.side !== 'root' && (
         <button
-          className={`mm-toggle nodrag nopan ${layout.hiddenCount > 0 ? 'collapsed' : ''}`}
-          title={layout.hiddenCount > 0 ? 'Ast aufklappen' : 'Ast einklappen'}
+          className={`mm-toggle nodrag nopan ${layout.hiddenCount > 0 ? 'collapsed' : ''} ${hiddenStatus ? `hides-${hiddenStatus}` : ''}`}
+          title={
+            layout.hiddenCount > 0
+              ? `Ast aufklappen${hiddenStatus === 'outage' ? ' (enthält eine Störung)' : hiddenStatus === 'affected' ? ' (enthält betroffene Artikel)' : ''}`
+              : 'Ast einklappen'
+          }
           onClick={(e) => {
             e.stopPropagation()
             void useWiki.getState().toggleCollapsed(article.id)

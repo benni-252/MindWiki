@@ -12,8 +12,10 @@ import {
   type OnNodeDrag
 } from '@xyflow/react'
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { impactChain, impactStatus, type Impact, type ImpactStatus } from '../../../shared/impact'
+import type { ArticleSummary } from '../../../shared/types'
 import { useWiki } from '../store'
-import { indexTree, isInSubtree } from '../treeUtils'
+import { impactOf, indexTree, isInSubtree } from '../treeUtils'
 import { ArticleNode, focusMap, type ArticleFlowNode } from './ArticleNode'
 import { ContextMenu } from './ContextMenu'
 import { estimateWidth, layoutMindMap, type LayoutArticle, type LayoutNode } from './layout'
@@ -27,6 +29,32 @@ function isTyping(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null
   return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)
 }
+
+/** Der Artikel selbst oder – in eingeklappten Ästen – sein nächster sichtbarer Vorfahr. */
+function visibleAncestor(byId: Map<number, ArticleSummary>, layout: Map<number, LayoutNode>, id: number): number | null {
+  let current = byId.get(id)
+  while (current && !layout.has(current.id)) current = current.parentId == null ? undefined : byId.get(current.parentId)
+  return current?.id ?? null
+}
+
+function formatSince(iso: string): string {
+  return new Date(iso).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+/** Tooltip eines Knotens: Titel plus Störung bzw. Weg, über den die Störung ankommt. */
+function nodeTooltip(article: ArticleSummary, impact: Impact, byId: Map<number, ArticleSummary>): string {
+  if (article.outageSince) {
+    const note = article.outageNote ? ` – ${article.outageNote}` : ''
+    return `${article.title}\nStörung seit ${formatSince(article.outageSince)}${note}`
+  }
+  if (impact.affected.has(article.id)) {
+    const chain = impactChain(impact, article.id).map((id) => byId.get(id)?.title ?? '?')
+    return `${article.title}\nBetroffen durch Störung: ${chain.join(' → ')}`
+  }
+  return article.title
+}
+
+const STATUS_RANK: Record<NonNullable<ImpactStatus>, number> = { affected: 1, outage: 2 }
 
 /** Nächster Knoten für die Pfeiltasten-Navigation. */
 function neighbour(layout: Map<number, LayoutNode>, id: number, key: string): number | null {
@@ -72,6 +100,7 @@ export function MindMap(): React.JSX.Element {
   const layout = useMemo(() => {
     if (!tree) return new Map<number, LayoutNode>()
     const { byId } = indexTree(tree)
+    const impact = impactOf(tree)
     const widthOf = (a: LayoutArticle, depth: number): number => {
       const measured = sizes.current.get(String(a.id))?.width
       if (measured) return measured
@@ -80,7 +109,8 @@ export function MindMap(): React.JSX.Element {
         estimateWidth(a, depth) +
         (summary && summary.checkTotal > 0 ? 54 : 0) +
         (summary?.hasText ? 12 : 0) +
-        (summary?.icon ? 22 : 0)
+        (summary?.icon ? 22 : 0) +
+        (impactStatus(impact, a.id) ? 20 : 0)
       )
     }
     return layoutMindMap(tree.articles, tree.rootId, widthOf)
@@ -92,6 +122,17 @@ export function MindMap(): React.JSX.Element {
   const nodes = useMemo<ArticleFlowNode[]>(() => {
     if (!tree) return []
     const { byId } = indexTree(tree)
+    const impact = impactOf(tree)
+    // Störungen in eingeklappten Ästen am sichtbaren Vorfahren anzeigen
+    const hidden = new Map<number, NonNullable<ImpactStatus>>()
+    for (const id of [...impact.outages, ...impact.affected.keys()]) {
+      if (layout.has(id)) continue
+      const shown = visibleAncestor(byId, layout, id)
+      const status = impactStatus(impact, id)
+      if (shown == null || !status) continue
+      const before = hidden.get(shown)
+      if (!before || STATUS_RANK[status] > STATUS_RANK[before]) hidden.set(shown, status)
+    }
     const result: ArticleFlowNode[] = []
     for (const n of layout.values()) {
       const article = byId.get(n.id)
@@ -114,7 +155,10 @@ export function MindMap(): React.JSX.Element {
           selected: n.id === selectedId,
           dropTarget: n.id === dropTarget,
           renaming: n.id === renamingId,
-          flash: n.id === flashId
+          flash: n.id === flashId,
+          status: impactStatus(impact, n.id),
+          hiddenStatus: hidden.get(n.id) ?? null,
+          tooltip: nodeTooltip(article, impact, byId)
         }
       })
     }
@@ -140,27 +184,62 @@ export function MindMap(): React.JSX.Element {
         style: { stroke: n.color, strokeWidth: Math.max(1.5, 4.5 - n.depth) }
       })
     }
+    // Verweise und Abhängigkeiten in eingeklappte Äste zeigen auf den sichtbaren Vorfahren.
+    const { byId } = indexTree(tree)
+    const visible = (id: number): number | null => visibleAncestor(byId, layout, id)
+    const handles = (from: number, to: number): Pick<Edge, 'sourceHandle' | 'targetHandle'> => {
+      const forward = (layout.get(to)?.x ?? 0) >= (layout.get(from)?.x ?? 0)
+      return { sourceHandle: forward ? 'r-s' : 'l-s', targetHandle: forward ? 'l-t' : 'r-t' }
+    }
+
+    // Abhängigkeiten: Pfeil vom benötigten zum abhängigen Artikel, also in die Richtung, in die sich
+    // eine Störung ausbreitet. Wege einer aktuellen Störung sind immer zu sehen, der Rest mit den Querverweisen.
+    const impact = impactOf(tree)
+    const depEdges = new Map<string, { from: number; to: number; impacted: boolean }>()
+    for (const d of tree.dependencies) {
+      const from = visible(d.dependsOnId)
+      const to = visible(d.articleId)
+      if (from == null || to == null || from === to) continue
+      const impacted = impactStatus(impact, d.dependsOnId) != null
+      if (!impacted && !showLinks) continue
+      const key = `${from}-${to}`
+      const before = depEdges.get(key)
+      depEdges.set(key, { from, to, impacted: impacted || !!before?.impacted })
+    }
+    for (const [key, { from, to, impacted }] of depEdges) {
+      result.push({
+        id: `d${key}`,
+        source: String(from),
+        target: String(to),
+        ...handles(from, to),
+        selectable: false,
+        focusable: false,
+        animated: impacted,
+        zIndex: impacted ? 1 : 0,
+        className: impacted ? 'dep-edge impact' : 'dep-edge',
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          width: 16,
+          height: 16,
+          color: impacted ? 'var(--danger)' : 'var(--dep)'
+        }
+      })
+    }
+
     if (showLinks) {
-      // Verweise in eingeklappte Äste zeigen auf den sichtbaren Vorfahren.
-      const { byId } = indexTree(tree)
-      const visible = (id: number): number | null => {
-        let current = byId.get(id)
-        while (current && !layout.has(current.id)) current = current.parentId == null ? undefined : byId.get(current.parentId)
-        return current?.id ?? null
-      }
       const seen = new Set<string>()
       for (const link of tree.links) {
         const from = visible(link.fromId)
         const to = visible(link.toId)
         if (from == null || to == null || from === to || seen.has(`${from}-${to}`)) continue
+        // Wo schon eine Abhängigkeit gezeichnet ist, reicht der eine Pfeil.
+        if (depEdges.has(`${from}-${to}`) || depEdges.has(`${to}-${from}`)) continue
         seen.add(`${from}-${to}`)
-        const forward = (layout.get(to)?.x ?? 0) >= (layout.get(from)?.x ?? 0)
         result.push({
           id: `x${from}-${to}`,
           source: String(from),
           target: String(to),
-          sourceHandle: forward ? 'r-s' : 'l-s',
-          targetHandle: forward ? 'l-t' : 'r-t',
+          ...handles(from, to),
           selectable: false,
           focusable: false,
           className: 'xref-edge',
@@ -370,7 +449,12 @@ export function MindMap(): React.JSX.Element {
         <MiniMap
           pannable
           zoomable
-          nodeColor={(n) => (n as ArticleFlowNode).data.layout.color || 'var(--accent)'}
+          nodeColor={(n) => {
+            const { status, layout } = (n as ArticleFlowNode).data
+            if (status === 'outage') return 'var(--danger)'
+            if (status === 'affected') return 'var(--warning)'
+            return layout.color || 'var(--accent)'
+          }}
           nodeStrokeWidth={0}
         />
         <Controls showInteractive={false} />

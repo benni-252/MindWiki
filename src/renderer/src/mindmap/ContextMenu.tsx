@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CircleCheck, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { IconPicker } from '../icons'
 import { useWiki } from '../store'
@@ -89,6 +89,15 @@ export function ContextMenu({ id, x, y, onClose }: Props): React.JSX.Element | n
           <button onClick={action(() => s.openArticle(id, true))}>
             Artikel öffnen <kbd>Strg+Enter</kbd>
           </button>
+          {article.outageSince ? (
+            <button className="menu-ok" onClick={action(() => s.resolveOutage(id))}>
+              Störung beheben <CircleCheck size={15} />
+            </button>
+          ) : (
+            <button className="danger" onClick={action(() => s.reportOutage(id))}>
+              Störung melden <TriangleAlert size={15} />
+            </button>
+          )}
           <hr />
           <button onClick={action(() => s.createChild(id))}>
             Unterartikel hinzufügen <kbd>Tab</kbd>

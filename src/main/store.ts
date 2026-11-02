@@ -9,6 +9,7 @@ import {
   type Checklist,
   type ChecklistItem,
   type ChecklistRun,
+  type DependencyEdge,
   type LinkEdge,
   type RunSnapshotItem,
   type SaveResult,
@@ -107,6 +108,7 @@ export class WikiStore {
   getTree(): TreeData {
     const articles = this.all<Row>(
       `SELECT a.id, a.parent_id, a.title, a.position, a.color, a.icon, a.collapsed,
+              a.outage_since, a.outage_note,
               a.content_text <> '' AS has_text,
               COALESCE(c.total, 0) AS total, COALESCE(c.done, 0) AS done
          FROM articles a
@@ -128,7 +130,9 @@ export class WikiStore {
         collapsed: r.collapsed === 1,
         hasText: r.has_text === 1,
         checkTotal: r.total as number,
-        checkDone: r.done as number
+        checkDone: r.done as number,
+        outageSince: (r.outage_since as string | null) ?? null,
+        outageNote: (r.outage_note as string | null) ?? null
       })
     )
     const links = this.all<Row>(
@@ -137,7 +141,13 @@ export class WikiStore {
          JOIN articles t ON t.id = l.to_id
         WHERE f.deleted_at IS NULL AND t.deleted_at IS NULL`
     ).map((r): LinkEdge => ({ fromId: r.from_id as number, toId: r.to_id as number }))
-    return { rootId: this.rootId(), articles, links }
+    const dependencies = this.all<Row>(
+      `SELECT d.article_id, d.depends_on_id FROM dependencies d
+         JOIN articles a ON a.id = d.article_id
+         JOIN articles b ON b.id = d.depends_on_id
+        WHERE a.deleted_at IS NULL AND b.deleted_at IS NULL`
+    ).map((r): DependencyEdge => ({ articleId: r.article_id as number, dependsOnId: r.depends_on_id as number }))
+    return { rootId: this.rootId(), articles, links, dependencies }
   }
 
   getArticle(id: number): Article | null {
@@ -362,6 +372,33 @@ export class WikiStore {
     }
     hits.sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, 'de'))
     return hits.slice(0, 30).map(({ score: _score, ...hit }) => hit)
+  }
+
+  // ---------- Abhängigkeiten & Störungen ----------
+
+  addDependency(articleId: number, dependsOnId: number): void {
+    if (articleId === dependsOnId) throw new WikiError('Ein Artikel kann nicht von sich selbst abhängen.')
+    this.requireLiveArticle(articleId)
+    this.requireLiveArticle(dependsOnId)
+    this.run('INSERT OR IGNORE INTO dependencies (article_id, depends_on_id) VALUES (?, ?)', articleId, dependsOnId)
+  }
+
+  removeDependency(articleId: number, dependsOnId: number): void {
+    this.run('DELETE FROM dependencies WHERE article_id = ? AND depends_on_id = ?', articleId, dependsOnId)
+  }
+
+  reportOutage(id: number, note: string | null): void {
+    this.requireLiveArticle(id)
+    this.run(
+      'UPDATE articles SET outage_since = COALESCE(outage_since, ?), outage_note = ? WHERE id = ?',
+      this.now(),
+      note?.trim() || null,
+      id
+    )
+  }
+
+  resolveOutage(id: number): void {
+    this.run('UPDATE articles SET outage_since = NULL, outage_note = NULL WHERE id = ?', id)
   }
 
   // ---------- Papierkorb ----------
