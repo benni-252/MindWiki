@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, Maximize2, Minimize2, PenLine, Shapes, TriangleAlert, UserX, X } from 'lucide-react'
+import { BookOpen, ChevronRight, FileDown, Maximize2, Minimize2, PenLine, Shapes, TriangleAlert, UserX, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TEMPLATES } from '../../../shared/templates'
 import type { Article, ArticleField } from '../../../shared/types'
@@ -221,6 +221,9 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
               <TriangleAlert size={17} />
             </button>
           )}
+          <button className="icon-btn" title="Als PDF exportieren (Strg+P)" onClick={() => void s.exportPdf(id)}>
+            <FileDown size={17} />
+          </button>
           <button
             className={`icon-btn ${readMode ? 'active' : ''}`}
             title={readMode ? 'Bearbeiten einschalten' : 'Lesemodus (schützt vor versehentlichen Änderungen)'}

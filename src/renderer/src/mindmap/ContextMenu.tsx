@@ -89,6 +89,9 @@ export function ContextMenu({ id, x, y, onClose }: Props): React.JSX.Element | n
           <button onClick={action(() => s.openArticle(id, true))}>
             Artikel öffnen <kbd>Strg+Enter</kbd>
           </button>
+          <button onClick={action(() => s.exportPdf(id))}>
+            Als PDF exportieren <kbd>Strg+P</kbd>
+          </button>
           {article.outageSince ? (
             <button className="menu-ok" onClick={action(() => s.resolveOutage(id))}>
               Störung beheben <CircleCheck size={15} />

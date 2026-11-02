@@ -48,6 +48,9 @@ export async function runAction(action: MenuAction): Promise<void> {
         if (s.can('admin')) s.setDialog('users')
         else if (s.session) s.toast('Nur der Admin kann Benutzer verwalten.', 'error')
         break
+      case 'export-pdf':
+        if (s.session && s.tree) await s.exportPdf(s.selectedId ?? s.tree.rootId)
+        break
       case 'check-updates':
         s.setDialog('update')
         s.setUpdate(await wiki.checkForUpdates())

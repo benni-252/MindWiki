@@ -16,6 +16,7 @@ Lokales Wiki als Mind Map: Artikel hängen in einem Baum (Hauptthema in der Mitt
 - **Updates:** Die installierte Version prüft beim Start und alle paar Stunden, ob es auf GitHub eine neue Version gibt. Dann erscheint oben „Update … verfügbar“; ein Klick lädt sie herunter und installiert sie mit einem kurzen Neustart (deine Daten bleiben erhalten). Von Hand: *Hilfe › Nach Updates suchen…*. Die portable Version zeigt nur den Hinweis und öffnet die Download-Seite. Dafür muss das GitHub-Repository öffentlich sein.
 - **Daten:** standardmäßig `Dokumente\MindWiki\Wiki.db`. Über *Datei › Neues Wiki / Wiki öffnen* kannst du weitere Wikis anlegen bzw. wechseln.
 - **Sicherungen:** beim Start höchstens einmal pro Tag automatisch in `Sicherungen\` neben der Datenbank (die letzten 5 bleiben). Manuell: *Datei › Sicherung erstellen* (Strg+Umschalt+S).
+- **Als PDF exportieren:** Knopf oben im Artikel, Rechtsklick in der Mind Map oder *Datei › Artikel als PDF exportieren* (Strg+P). Das PDF enthält Pfad, Steckbrief (Passwort-Felder unkenntlich), Text mit Bildern und Tabellen, Abläufe zum Abhaken, Abhängigkeiten sowie Hinweise auf Störungen oder nicht freigegebene Entwürfe.
 - **Papierkorb:** Gelöschte Äste lassen sich unter *Bearbeiten › Papierkorb* wiederherstellen.
 
 ### Anmeldung, Benutzer und Rollen

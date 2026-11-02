@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { findTemplate } from '../../shared/templates'
 import type { DbInfo, LoginInfo, Role, Session, TreeData, UpdateState } from '../../shared/types'
 import { errorMessage, flushPending, hasPending, wiki } from './api'
-import { countSubtree, impactOf, indexTree, pathTo, type SeenState } from './treeUtils'
+import { countSubtree, impactOf, indexTree, pathTo, visibleContentId, type SeenState } from './treeUtils'
 
 export type DialogKind =
   | 'search'
@@ -108,6 +108,8 @@ interface State {
   reject(id: number, reason: string | null): Promise<void>
   setApprovalRequired(on: boolean): Promise<void>
   setUpdate(update: UpdateState): void
+  /** Artikel als PDF speichern (Speichern-Dialog im Hauptprozess) */
+  exportPdf(id: number): Promise<void>
 }
 
 function readPref(key: string, fallback: boolean): boolean {
@@ -476,6 +478,19 @@ export const useWiki = create<State>((set, get) => {
     },
 
     setUpdate: (update) => set({ update }),
+
+    async exportPdf(id) {
+      const { tree, userName } = get()
+      const article = tree ? indexTree(tree).byId.get(id) : undefined
+      if (!article) return
+      await flushPending()
+      try {
+        const file = await wiki.exportPdf(visibleContentId(article, userName))
+        if (file) get().toast(`Als PDF gespeichert: ${file}`)
+      } catch (err) {
+        get().toast(`PDF-Export fehlgeschlagen: ${errorMessage(err)}`, 'error')
+      }
+    },
 
     startDraft: (id) => decide(() => wiki.startDraft(id), null),
     discardDraft: (id) => decide(() => wiki.discardDraft(id), 'Entwurf verworfen.'),

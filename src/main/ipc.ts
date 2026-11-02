@@ -1,8 +1,10 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { RPC_METHODS, type Role, type WikiRpc } from '../shared/types'
 import { backupTo, NotAWikiError } from './db'
+import { articleToHtml } from './exportHtml'
+import { renderPdf } from './pdf'
 import { ensureSampleWiki } from './sample'
 import { checkForUpdates, downloadUpdate, getUpdateState, installUpdate, openReleasePage } from './updater'
 import { defaultDbPath, loadSettings, sampleDbPath, saveSettings } from './settings'
@@ -12,6 +14,7 @@ import { currentDbFile, currentSession, currentStore, openWiki, setSession, wiki
 type FileOps =
   | 'getDbInfo'
   | 'openSampleDb'
+  | 'exportPdf'
   | 'getUpdateState'
   | 'checkForUpdates'
   | 'downloadUpdate'
@@ -110,6 +113,31 @@ export function tryOpen(win: BrowserWindow | null, file: string): boolean {
 export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: () => void): void {
   const fileOps: Pick<WikiRpc, FileOps> = {
     getDbInfo: () => ({ path: currentDbFile(), name: wikiName(), isSample: currentStore().isSample() }),
+
+    exportPdf: async (id: number) => {
+      const store = currentStore()
+      const article = store.exportArticle(id)
+      const win = getWindow()
+      // Dateiname ohne Zeichen, die Windows nicht erlaubt
+      const name = article.title.replace(/[\\/:*?"<>|]+/g, '-').trim() || 'Artikel'
+      const options = {
+        title: 'Als PDF exportieren',
+        defaultPath: path.join(app.getPath('documents'), `${name}.pdf`),
+        filters: [{ name: 'PDF-Dokument', extensions: ['pdf'] }]
+      }
+      const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+      if (result.canceled || !result.filePath) return null
+      const html = articleToHtml(article, {
+        articleTitle: (linked) => store.liveTitle(linked),
+        imageSrc: (src) => {
+          const match = /wikiimg:\/\/img\/(\d+)/.exec(src)
+          const image = match ? store.getImage(Number(match[1])) : undefined
+          return image ? `data:${image.mime};base64,${Buffer.from(image.data).toString('base64')}` : undefined
+        }
+      })
+      fs.writeFileSync(result.filePath, await renderPdf(html))
+      return result.filePath
+    },
 
     getUpdateState,
     checkForUpdates: () => checkForUpdates(false),

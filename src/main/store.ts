@@ -24,6 +24,7 @@ import {
   type TreeData
 } from '../shared/types'
 import { diffLines } from '../shared/diff'
+import type { ExportArticle } from './exportHtml'
 import { docText, extractArticleLinks } from './links'
 import { DEFAULT_ADMIN, hashPassword, verifyPassword } from './passwords'
 
@@ -970,6 +971,92 @@ export class WikiStore {
       docText(change.old_content),
       `Text auf die Fassung vor der Änderung von ${change.author} (${formatStamp(change.at)}) zurückgesetzt`
     )
+  }
+
+  // ---------- Export ----------
+
+  /** Aktueller Titel eines lebenden Artikels (für Querverweise im Export). */
+  liveTitle(id: number): string | undefined {
+    return this.get<{ title: string }>('SELECT title FROM articles WHERE id = ? AND deleted_at IS NULL', id)?.title
+  }
+
+  /** Alles, was das PDF eines Artikels braucht. `id` darf auch der eigene Entwurf sein. */
+  exportArticle(id: number): ExportArticle {
+    const a = this.get<Row>('SELECT * FROM articles WHERE id = ? AND deleted_at IS NULL', id)
+    if (!a) throw new WikiError('Artikel nicht gefunden.')
+    const draftOf = (a.draft_of as number | null) ?? null
+    const baseId = draftOf ?? id
+
+    const path: string[] = []
+    let parent = this.get<{ parent_id: number | null }>('SELECT parent_id FROM articles WHERE id = ?', baseId)?.parent_id ?? null
+    while (parent != null && path.length < 100) {
+      const row = this.get<{ title: string; parent_id: number | null }>('SELECT title, parent_id FROM articles WHERE id = ?', parent)
+      if (!row) break
+      path.unshift(row.title)
+      parent = row.parent_id
+    }
+
+    const fields = this.getFields(id)
+      .filter((f) => f.value.trim() !== '')
+      // Passwörter gehören nicht in ein weitergegebenes Dokument
+      .map((f) => ({ label: f.label, value: SECRET_LABEL.test(f.label) ? '••••••' : f.value }))
+
+    const checklists = this.getChecklists(id).map((list) => {
+      const run = this.get<{ completed_at: string; note: string | null }>(
+        'SELECT completed_at, note FROM checklist_runs WHERE checklist_id = ? ORDER BY completed_at DESC LIMIT 1',
+        draftOf != null
+          ? (this.get<{ source_id: number | null }>('SELECT source_id FROM checklists WHERE id = ?', list.id)?.source_id ?? -1)
+          : list.id
+      )
+      return {
+        title: list.title,
+        steps: list.items.map((i) => i.text),
+        lastRun: run ? `${formatStamp(run.completed_at)}${run.note ? ` – ${run.note}` : ''}` : null
+      }
+    })
+
+    const titles = (sql: string): string[] =>
+      this.all<{ title: string }>(sql, baseId)
+        .map((r) => r.title)
+        .sort((x, y) => x.localeCompare(y, 'de'))
+    const dependsOn = titles(
+      `SELECT b.title FROM dependencies d JOIN articles b ON b.id = d.depends_on_id
+        WHERE d.article_id = ? AND b.deleted_at IS NULL`
+    )
+    const neededBy = titles(
+      `SELECT b.title FROM dependencies d JOIN articles b ON b.id = d.article_id
+        WHERE d.depends_on_id = ? AND b.deleted_at IS NULL`
+    )
+
+    const notes: ExportArticle['notes'] = []
+    const base = this.get<Row>('SELECT * FROM articles WHERE id = ?', baseId)!
+    if (draftOf != null) notes.push({ kind: 'warning', text: `Entwurf von ${a.created_by ?? '?'} – noch nicht freigegeben.` })
+    else if (this.approvalRequired() && a.approved_at == null) {
+      notes.push({ kind: 'warning', text: `Neuer Artikel von ${a.created_by ?? '?'} – noch nicht freigegeben.` })
+    }
+    if (base.outage_since) {
+      const note = base.outage_note ? `: ${base.outage_note as string}` : ''
+      notes.push({ kind: 'danger', text: `Störung seit ${formatStamp(base.outage_since as string)}${note}` })
+    }
+
+    const last = this.get<{ at: string; author: string }>(
+      'SELECT at, author FROM changes WHERE article_id = ? ORDER BY at DESC, id DESC LIMIT 1',
+      baseId
+    )
+    const changed = last
+      ? `Zuletzt geändert ${formatStamp(last.at)} von ${last.author}`
+      : `Zuletzt geändert ${formatStamp(a.updated_at as string)}`
+    return {
+      title: a.title as string,
+      path,
+      content: (a.content as string | null) ?? null,
+      fields,
+      checklists,
+      dependsOn,
+      neededBy,
+      notes,
+      meta: `${changed} · exportiert ${formatStamp(this.now())} von ${this.author}`
+    }
   }
 
   // ---------- Benutzer ----------
