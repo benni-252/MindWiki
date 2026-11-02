@@ -25,8 +25,17 @@ export function saveSettings(patch: Partial<Settings>): void {
   fs.writeFileSync(file(), JSON.stringify(next, null, 2), 'utf8')
 }
 
+/** Ordner für Wiki-Dateien; MINDWIKI_DOCUMENTS ersetzt ihn in automatischen Tests. */
+function wikiFolder(): string {
+  return path.join(process.env.MINDWIKI_DOCUMENTS || app.getPath('documents'), 'MindWiki')
+}
+
 export function defaultDbPath(): string {
-  return path.join(app.getPath('documents'), 'MindWiki', 'Wiki.db')
+  return path.join(wikiFolder(), 'Wiki.db')
+}
+
+export function sampleDbPath(): string {
+  return path.join(wikiFolder(), 'Beispiel-Wiki.db')
 }
 
 function loginName(): string {

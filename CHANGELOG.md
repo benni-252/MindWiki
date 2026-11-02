@@ -2,6 +2,19 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.3.0
+
+**Neu: Beispiel-Wiki**
+- Beim ersten Start zeigt MindWiki ein Beispiel mit erfundenen IT-Daten: Netzwerk, Server, Software, Arbeitsplätze, bekannte Störungen und Dienstleister – mit Steckbriefen, Abläufen, Abhängigkeiten, Verlauf und einer Beispiel-Störung.
+- Das Beispiel ist eine eigene Datei. *Datei › Neues Wiki* legt dein eigenes, leeres Wiki an; das Beispiel bleibt unter *Hilfe › Beispiel-Wiki öffnen* erreichbar.
+- Wer schon ein Wiki benutzt, bei dem ändert sich nichts.
+
+**Download**
+- `MindWiki-Setup-1.3.0.exe` – Installer
+- `MindWiki-1.3.0-portable.exe` – ohne Installation starten
+
+**Hinweis:** Die .exe ist nicht signiert. Windows SmartScreen fragt beim ersten Start nach – „Weitere Informationen“ → „Trotzdem ausführen“.
+
 ## 1.2.0
 
 **Neu: Freigaben nach dem Vier-Augen-Prinzip**

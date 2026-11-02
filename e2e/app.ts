@@ -11,12 +11,22 @@ export function makeWorkDir(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'mindwiki-e2e-'))
 }
 
-/** Startet die gebaute App (npm run build) mit der angegebenen Datenbank statt der echten. */
-export async function launch(workDir: string, dbName: string): Promise<{ app: ElectronApplication; page: Page }> {
+/**
+ * Startet die gebaute App (npm run build) mit der angegebenen Datenbank statt der echten.
+ * Ohne `dbName` startet sie wie nach einer frischen Installation (Ordner über `extraEnv`).
+ */
+export async function launch(
+  workDir: string,
+  dbName: string | null,
+  extraEnv: Record<string, string> = {}
+): Promise<{ app: ElectronApplication; page: Page }> {
   const env: Record<string, string> = {}
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RENDERER_URL') env[k] = v
-  env.MINDWIKI_DB = path.join(workDir, dbName)
+  for (const [k, v] of Object.entries(process.env)) {
+    if (v !== undefined && k !== 'ELECTRON_RENDERER_URL' && k !== 'MINDWIKI_DB') env[k] = v
+  }
+  if (dbName) env.MINDWIKI_DB = path.join(workDir, dbName)
   env.MINDWIKI_USER_DATA = path.join(workDir, 'userData')
+  Object.assign(env, extraEnv)
   const app = await electron.launch({ args: [path.join(__dirname, '..', 'out', 'main', 'index.js')], env })
   const page = await app.firstWindow()
   await page.setViewportSize({ width: 1400, height: 860 })

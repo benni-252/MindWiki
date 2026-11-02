@@ -4,7 +4,11 @@ Lokales Wiki als Mind Map: Artikel hängen in einem Baum (Hauptthema in der Mitt
 
 **⬇ [Neueste Version für Windows herunterladen](https://github.com/benni-252/MindWiki/releases/latest)**
 
+![MindWiki mit dem Beispiel-Wiki](docs/screenshots/mindmap.png)
+
 ## Programm benutzen
+
+- **Beispiel-Wiki:** Beim ersten Start öffnet MindWiki ein Beispiel mit erfundenen IT-Daten (Netzwerk, Server, Software, Abläufe, Abhängigkeiten und eine Beispiel-Störung), damit man sofort sieht, wie alles aussieht. Es liegt als eigene Datei `Dokumente\MindWiki\Beispiel-Wiki.db` neben deinem Wiki. *Datei › Neues Wiki* legt ein eigenes, leeres Wiki an; das Beispiel bleibt unter *Hilfe › Beispiel-Wiki öffnen* erreichbar. Wer schon ein Wiki hat, bei dem ändert sich nichts.
 
 - **Herunterladen:** Die fertigen .exe-Dateien liegen auf GitHub unter **Releases** (rechts auf der Repo-Seite). Im Repository selbst sind sie absichtlich nicht enthalten (`dist/` steht in `.gitignore`), sie werden vom Workflow `Windows-Build` erzeugt – siehe [Windows-Programme auf GitHub bauen](#windows-programme-auf-github-bauen).
 - **Installieren:** `MindWiki-Setup-<Version>.exe` ausführen – oder ohne Installation `MindWiki-<Version>-portable.exe` starten.
@@ -33,6 +37,8 @@ Einschalten unter *Datei › Freigaben…* (gilt für alle, die die Wiki-Datei b
 - Beim Ausschalten werden alle offenen Entwürfe übernommen. Wer freigeben darf, wird am Namen im Verlauf erkannt – das ist eine Absprache im Team, kein Schutz mit Passwort.
 
 ### IT-Funktionen
+
+![Störung mit betroffenen Artikeln](docs/screenshots/stoerung.png)
 
 - **Vorlagen:** Server / System, Netzwerkgerät, Software, Anleitung, Störung / Fehlerbehebung, Dienstleister / Kontakt – jeweils mit Steckbrief-Feldern, Gliederung und passendem Ablauf. Erreichbar über den Plus-Knopf oben, per Rechtsklick „Unterartikel aus Vorlage“ oder in einem leeren Artikel über „Mit Vorlage starten“.
 - **Steckbrief:** frei benennbare Felder (Hostname, IP-Adresse, Standort …) oben im Artikel, mit Kopieren-Knopf und Vorschlägen beim Tippen; die Suche findet auch Feldwerte. Passwörter gehören in einen Passwort-Manager – die Wiki-Datei ist nicht verschlüsselt.

@@ -138,6 +138,11 @@ export class WikiStore {
 
   // ---------- Freigaben ----------
 
+  /** Das mitgelieferte Beispiel-Wiki? */
+  isSample(): boolean {
+    return this.get<{ value: string }>("SELECT value FROM meta WHERE key = 'sample'")?.value === '1'
+  }
+
   approvalRequired(): boolean {
     return this.get<{ value: string }>("SELECT value FROM meta WHERE key = 'approval_required'")?.value === '1'
   }

@@ -8,9 +8,11 @@ export async function runAction(action: MenuAction): Promise<void> {
   try {
     switch (action) {
       case 'new-db':
-      case 'open-db': {
+      case 'open-db':
+      case 'sample-db': {
         await flushPending()
-        const switched = action === 'new-db' ? await wiki.newDb() : await wiki.openDb()
+        const switched =
+          action === 'new-db' ? await wiki.newDb() : action === 'open-db' ? await wiki.openDb() : await wiki.openSampleDb()
         if (switched) {
           await useWiki.getState().loadAll()
           const info = useWiki.getState().dbInfo

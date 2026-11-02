@@ -3,12 +3,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { RPC_METHODS, type WikiRpc } from '../shared/types'
 import { backupTo, NotAWikiError } from './db'
-import { defaultDbPath, saveSettings, userName } from './settings'
+import { ensureSampleWiki } from './sample'
+import { defaultDbPath, sampleDbPath, saveSettings, userName } from './settings'
 import type { WikiStore } from './store'
 import { currentDbFile, currentStore, openWiki, wikiName } from './wiki'
 
 type FileOps =
   | 'getDbInfo'
+  | 'openSampleDb'
   | 'newDb'
   | 'openDb'
   | 'backupDb'
@@ -47,7 +49,20 @@ export function tryOpen(win: BrowserWindow | null, file: string): boolean {
 
 export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: () => void): void {
   const fileOps: Pick<WikiRpc, FileOps> = {
-    getDbInfo: () => ({ path: currentDbFile(), name: wikiName() }),
+    getDbInfo: () => ({ path: currentDbFile(), name: wikiName(), isSample: currentStore().isSample() }),
+
+    openSampleDb: async () => {
+      const win = getWindow()
+      let file: string
+      try {
+        file = ensureSampleWiki(sampleDbPath())
+      } catch (err) {
+        showError(win, `Das Beispiel-Wiki konnte nicht angelegt werden.\n\n${String(err)}`)
+        return false
+      }
+      if (path.resolve(file) === path.resolve(currentDbFile())) return false
+      return tryOpen(win, file)
+    },
 
     newDb: async () => {
       const win = getWindow()

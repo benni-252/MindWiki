@@ -1,4 +1,5 @@
 import { ReactFlowProvider } from '@xyflow/react'
+import { FlaskConical } from 'lucide-react'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import type { MenuAction } from '../../shared/types'
 import { runAction } from './actions'
@@ -18,6 +19,26 @@ import { useWiki } from './store'
 import { TopBar } from './TopBar'
 
 const MIN_PANEL = 380
+
+/** Hinweis, solange das mitgelieferte Beispiel-Wiki offen ist. */
+function SampleBar(): React.JSX.Element | null {
+  const dbInfo = useWiki((s) => s.dbInfo)
+  if (!dbInfo?.isSample) return null
+  return (
+    <div className="sample-bar" role="note">
+      <FlaskConical size={16} />
+      <span>
+        <strong>Beispiel-Wiki</strong> mit erfundenen Daten – zum Ausprobieren.
+      </span>
+      <button className="btn btn-small btn-primary" onClick={() => void runAction('new-db')}>
+        Eigenes Wiki anlegen…
+      </button>
+      <button className="btn btn-small" onClick={() => void runAction('open-db')}>
+        Wiki öffnen…
+      </button>
+    </div>
+  )
+}
 
 function readPanelWidth(): number {
   try {
@@ -112,6 +133,7 @@ export function App(): React.JSX.Element {
           className={`workspace ${showPanel ? 'with-panel' : ''} ${showPanel && panelMax ? 'panel-max' : ''}`}
           style={{ '--panel-width': `${panelWidth}px` } as React.CSSProperties}
         >
+          <SampleBar />
           <MindMap />
           {showPanel && (
             <>

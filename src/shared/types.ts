@@ -162,6 +162,8 @@ export interface TrashEntry {
 export interface DbInfo {
   path: string
   name: string
+  /** Das mitgelieferte Beispiel-Wiki mit erfundenen Daten */
+  isSample: boolean
 }
 
 export interface SaveResult {
@@ -243,6 +245,8 @@ export interface WikiRpc {
   getDbInfo(): DbInfo
   newDb(): Promise<boolean>
   openDb(): Promise<boolean>
+  /** Beispiel-Wiki öffnen (beim ersten Mal anlegen) */
+  openSampleDb(): Promise<boolean>
   backupDb(): Promise<string | null>
   revealDb(): void
   confirmClose(): void
@@ -305,6 +309,7 @@ export const RPC_METHODS = [
   'getDbInfo',
   'newDb',
   'openDb',
+  'openSampleDb',
   'backupDb',
   'revealDb',
   'confirmClose'
@@ -326,6 +331,7 @@ export type MenuAction =
   | 'changes'
   | 'user-name'
   | 'approvals'
+  | 'sample-db'
   | 'toggle-links'
   | 'fit'
   | 'shortcuts'
