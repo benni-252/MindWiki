@@ -16,6 +16,7 @@ const SHORTCUTS: [string, string][] = [
   ['Esc', 'Artikel schließen'],
   ['Allgemein', ''],
   ['Strg+K', 'Suchen'],
+  ['Strg+Umschalt+H', 'Letzte Änderungen'],
   ['Strg+L', 'Querverweise ein/aus'],
   ['Strg+0', 'Ganze Mind Map zeigen'],
   ['Strg+N / Strg+O', 'Neues Wiki / Wiki öffnen'],

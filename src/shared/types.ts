@@ -17,6 +17,12 @@ export interface ArticleSummary {
   outageSince: string | null
   /** Kurze Notiz zur Störung (Ursache, Ticket …) */
   outageNote: string | null
+  /** Letzte protokollierte Änderung (null bei Artikeln aus der Zeit vor dem Verlauf) */
+  lastChangeAt: string | null
+  lastChangeBy: string | null
+  /** Letzte Änderung durch jemand anderen als den aktuellen Nutzer */
+  lastOtherChangeAt: string | null
+  lastOtherChangeBy: string | null
 }
 
 /** Ein Steckbrief-Feld eines Artikels (z. B. „IP-Adresse“ = „10.0.0.5“). */
@@ -88,6 +94,37 @@ export interface ChecklistRun {
   snapshot: RunSnapshotItem[]
 }
 
+export type ChangeKind =
+  | 'create'
+  | 'title'
+  | 'text'
+  | 'icon'
+  | 'template'
+  | 'field'
+  | 'checklist'
+  | 'dependency'
+  | 'outage'
+  | 'move'
+  | 'trash'
+
+/** Ein Eintrag im Verlauf eines Artikels: wer hat wann was geändert. */
+export interface ChangeEntry {
+  id: number
+  articleId: number
+  at: string
+  author: string
+  kind: ChangeKind
+  summary: string
+  /** Bei Textänderungen: Die Fassung vor dieser Änderung ist gespeichert und kann angesehen werden. */
+  hasVersion: boolean
+}
+
+export interface RecentChange extends ChangeEntry {
+  title: string
+  /** Artikel liegt im Papierkorb */
+  deleted: boolean
+}
+
 export interface SearchHit {
   id: number
   title: string
@@ -135,6 +172,15 @@ export interface WikiRpc {
   /** Meldet eine Störung oder ändert ihre Notiz; der Beginn bleibt dabei erhalten. */
   reportOutage(id: number, note: string | null): void
   resolveOutage(id: number): void
+
+  getChanges(articleId: number): ChangeEntry[]
+  getRecentChanges(limit: number): RecentChange[]
+  /** Text (TipTap-JSON) vor einer Textänderung */
+  getTextVersion(changeId: number): string | null
+  restoreTextVersion(changeId: number): void
+  /** Name, unter dem die eigenen Änderungen im Verlauf erscheinen */
+  getUserName(): string
+  setUserName(name: string): string
 
   listTrash(): TrashEntry[]
   restoreArticle(id: number): void
@@ -190,6 +236,12 @@ export const RPC_METHODS = [
   'removeDependency',
   'reportOutage',
   'resolveOutage',
+  'getChanges',
+  'getRecentChanges',
+  'getTextVersion',
+  'restoreTextVersion',
+  'getUserName',
+  'setUserName',
   'listTrash',
   'restoreArticle',
   'purgeArticle',
@@ -235,12 +287,18 @@ export type MenuAction =
   | 'search'
   | 'trash'
   | 'outages'
+  | 'changes'
+  | 'user-name'
   | 'toggle-links'
   | 'fit'
   | 'shortcuts'
   | 'about'
 
-export type WikiEvent = { type: 'menu'; action: MenuAction } | { type: 'request-close' }
+export type WikiEvent =
+  | { type: 'menu'; action: MenuAction }
+  | { type: 'request-close' }
+  /** Jemand anderes hat die geöffnete Wiki-Datei geändert */
+  | { type: 'external-change' }
 
 type Promisify<T> = {
   [K in keyof T]: T[K] extends (...args: infer A) => infer R ? (...args: A) => Promise<Awaited<R>> : never

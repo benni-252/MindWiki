@@ -1,23 +1,26 @@
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
-import { findTemplate, templateDoc, type ArticleTemplate } from '../shared/templates'
+import { findTemplate, SECRET_LABEL, templateDoc, type ArticleTemplate } from '../shared/templates'
 import {
   IMAGE_URL_PATTERN,
   imageUrl,
   type Article,
   type ArticleField,
   type ArticleSummary,
+  type ChangeEntry,
+  type ChangeKind,
   type Checklist,
   type ChecklistItem,
   type ChecklistRun,
   type DependencyEdge,
   type LinkEdge,
+  type RecentChange,
   type RunSnapshotItem,
   type SaveResult,
   type SearchHit,
   type TrashEntry,
   type TreeData
 } from '../shared/types'
-import { extractArticleLinks } from './links'
+import { docText, extractArticleLinks } from './links'
 
 type Row = Record<string, unknown>
 
@@ -25,9 +28,36 @@ export class WikiError extends Error {}
 
 const UNTITLED = 'Ohne Titel'
 
+/** Textänderungen derselben Person innerhalb dieser Zeit ergeben einen Verlaufseintrag. */
+export const TEXT_MERGE_MS = 15 * 60_000
+/** Umbenennen so kurz nach dem Anlegen gehört noch zum Anlegen. */
+export const NAMING_AFTER_CREATE_MS = 5 * 60_000
+/** So viele frühere Textfassungen bleiben je Artikel gespeichert. */
+export const KEEP_TEXT_VERSIONS = 30
+
+/** Zitat für Verlaufseinträge, lange Werte gekürzt. */
+function q(value: string, max = 60): string {
+  const clean = value.replace(/\s+/g, ' ').trim()
+  return `„${clean.length > max ? `${clean.slice(0, max - 1)}…` : clean}“`
+}
+
+function formatStamp(iso: string): string {
+  const d = new Date(iso)
+  const p = (n: number): string => String(n).padStart(2, '0')
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 /** Alle Lese- und Schreibzugriffe auf eine geöffnete Wiki-Datenbank. */
 export class WikiStore {
-  constructor(readonly db: DatabaseSync) {}
+  /** > 0: Änderungen nicht protokollieren (z. B. Bestandteile einer Vorlage) */
+  private quiet = 0
+  private txDepth = 0
+
+  /** `author`: Name, unter dem Änderungen im Verlauf erscheinen */
+  constructor(
+    readonly db: DatabaseSync,
+    public author = 'Unbekannt'
+  ) {}
 
   // ---------- Hilfsfunktionen ----------
 
@@ -43,8 +73,12 @@ export class WikiStore {
     return Number(this.db.prepare(sql).run(...params).lastInsertRowid)
   }
 
+  /** Schreibtransaktion; IMMEDIATE sperrt sofort, damit sich zwei Rechner nicht gegenseitig blockieren. */
   private tx<T>(fn: () => T): T {
-    this.db.exec('BEGIN')
+    // verschachtelt (z. B. Vorlage innerhalb von createArticle): in der äußeren Transaktion mitlaufen
+    if (this.txDepth > 0) return fn()
+    this.db.exec('BEGIN IMMEDIATE')
+    this.txDepth++
     try {
       const result = fn()
       this.db.exec('COMMIT')
@@ -52,6 +86,8 @@ export class WikiStore {
     } catch (err) {
       this.db.exec('ROLLBACK')
       throw err
+    } finally {
+      this.txDepth--
     }
   }
 
@@ -97,6 +133,37 @@ export class WikiStore {
     return row
   }
 
+  private log(articleId: number, kind: ChangeKind, summary: string, oldContent: string | null = null): void {
+    if (this.quiet > 0) return
+    this.run(
+      'INSERT INTO changes (article_id, at, author, kind, summary, old_content) VALUES (?, ?, ?, ?, ?, ?)',
+      articleId,
+      this.now(),
+      this.author,
+      kind,
+      summary,
+      oldContent
+    )
+  }
+
+  private silently<T>(fn: () => T): T {
+    this.quiet++
+    try {
+      return fn()
+    } finally {
+      this.quiet--
+    }
+  }
+
+  private titleOf(id: number): string {
+    return this.get<{ title: string }>('SELECT title FROM articles WHERE id = ?', id)?.title ?? '?'
+  }
+
+  /** Zähler, der sich ändert, sobald eine andere Verbindung (anderer Rechner) etwas gespeichert hat. */
+  dataVersion(): number {
+    return (this.get<{ data_version: number }>('PRAGMA data_version')?.data_version ?? 0) as number
+  }
+
   rootId(): number {
     const row = this.get<{ id: number }>('SELECT id FROM articles WHERE parent_id IS NULL')
     if (!row) throw new WikiError('Wurzelartikel fehlt.')
@@ -110,15 +177,21 @@ export class WikiStore {
       `SELECT a.id, a.parent_id, a.title, a.position, a.color, a.icon, a.collapsed,
               a.outage_since, a.outage_note,
               a.content_text <> '' AS has_text,
-              COALESCE(c.total, 0) AS total, COALESCE(c.done, 0) AS done
+              COALESCE(c.total, 0) AS total, COALESCE(c.done, 0) AS done,
+              lc.at AS last_at, lc.author AS last_by, oc.at AS other_at, oc.author AS other_by
          FROM articles a
+         LEFT JOIN (SELECT article_id, MAX(at) AS at, author FROM changes GROUP BY article_id) lc
+           ON lc.article_id = a.id
+         LEFT JOIN (SELECT article_id, MAX(at) AS at, author FROM changes WHERE author <> ? GROUP BY article_id) oc
+           ON oc.article_id = a.id
          LEFT JOIN (
            SELECT cl.article_id, COUNT(i.id) AS total, SUM(i.checked) AS done
              FROM checklists cl JOIN checklist_items i ON i.checklist_id = cl.id
             GROUP BY cl.article_id
          ) c ON c.article_id = a.id
         WHERE a.deleted_at IS NULL
-        ORDER BY a.position, a.id`
+        ORDER BY a.position, a.id`,
+      this.author
     ).map(
       (r): ArticleSummary => ({
         id: r.id as number,
@@ -132,7 +205,11 @@ export class WikiStore {
         checkTotal: r.total as number,
         checkDone: r.done as number,
         outageSince: (r.outage_since as string | null) ?? null,
-        outageNote: (r.outage_note as string | null) ?? null
+        outageNote: (r.outage_note as string | null) ?? null,
+        lastChangeAt: (r.last_at as string | null) ?? null,
+        lastChangeBy: (r.last_by as string | null) ?? null,
+        lastOtherChangeAt: (r.other_at as string | null) ?? null,
+        lastOtherChangeBy: (r.other_by as string | null) ?? null
       })
     )
     const links = this.all<Row>(
@@ -188,7 +265,8 @@ export class WikiStore {
       }
       this.run('UPDATE articles SET collapsed = 0 WHERE id = ?', parentId)
       const id = this.run('INSERT INTO articles (parent_id, title, position) VALUES (?, ?, ?)', parentId, clean, position)
-      if (template) this.fillFromTemplate(id, template)
+      if (template) this.silently(() => this.fillFromTemplate(id, template))
+      this.log(id, 'create', template ? `Angelegt aus der Vorlage ${q(template.name)}` : 'Angelegt')
       return id
     })
   }
@@ -206,7 +284,10 @@ export class WikiStore {
   applyTemplate(id: number, templateId: string): void {
     this.requireLiveArticle(id)
     const template = this.requireTemplate(templateId)
-    this.tx(() => this.fillFromTemplate(id, template))
+    this.tx(() => {
+      this.silently(() => this.fillFromTemplate(id, template))
+      this.log(id, 'template', `Vorlage ${q(template.name)} angewendet`)
+    })
   }
 
   private fillFromTemplate(id: number, template: ArticleTemplate): void {
@@ -242,11 +323,25 @@ export class WikiStore {
 
   /** Speichert auch Artikel im Papierkorb, damit eine letzte Änderung beim Löschen nicht verloren geht. */
   saveArticleContent(id: number, content: string, text: string): SaveResult {
-    const before = this.get<{ has_text: number }>("SELECT content_text <> '' AS has_text FROM articles WHERE id = ?", id)
+    return this.writeContent(id, content, text, null)
+  }
+
+  /**
+   * Schreibt den Text und protokolliert die Änderung samt der Fassung davor. Mehrere Speicherungen
+   * derselben Person kurz hintereinander werden zu einem Verlaufseintrag zusammengefasst –
+   * außer `summary` ist gesetzt (z. B. beim Wiederherstellen), dann gibt es immer einen eigenen Eintrag.
+   */
+  private writeContent(id: number, content: string, text: string, summary: string | null): SaveResult {
+    const before = this.get<{ has_text: number; content: string | null }>(
+      "SELECT content_text <> '' AS has_text, content FROM articles WHERE id = ?",
+      id
+    )
     if (!before) throw new WikiError('Artikel nicht gefunden.')
+    if (before.content === content) return { treeChanged: false }
     const plain = text.trim()
 
     return this.tx(() => {
+      this.logText(id, before.content, summary)
       this.run(
         'UPDATE articles SET content = ?, content_text = ?, updated_at = ? WHERE id = ?',
         content,
@@ -268,8 +363,47 @@ export class WikiStore {
     })
   }
 
+  private logText(id: number, oldContent: string | null, summary: string | null): void {
+    const last = this.get<{ id: number; kind: string; author: string; at: string }>(
+      'SELECT id, kind, author, at FROM changes WHERE article_id = ? ORDER BY at DESC, id DESC LIMIT 1',
+      id
+    )
+    const sameSession =
+      !summary &&
+      last?.kind === 'text' &&
+      last.author === this.author &&
+      Date.now() - Date.parse(last.at) < TEXT_MERGE_MS
+    if (sameSession) {
+      this.run('UPDATE changes SET at = ? WHERE id = ?', this.now(), last.id)
+      return
+    }
+    this.log(id, 'text', summary ?? 'Text bearbeitet', oldContent)
+    this.run(
+      `UPDATE changes SET old_content = NULL
+        WHERE article_id = ? AND old_content IS NOT NULL AND id NOT IN (
+          SELECT id FROM changes WHERE article_id = ? AND old_content IS NOT NULL
+           ORDER BY at DESC, id DESC LIMIT ${KEEP_TEXT_VERSIONS}
+        )`,
+      id,
+      id
+    )
+  }
+
   renameArticle(id: number, title: string): void {
-    this.run('UPDATE articles SET title = ?, updated_at = ? WHERE id = ?', title.trim() || UNTITLED, this.now(), id)
+    const clean = title.trim() || UNTITLED
+    const old = this.titleOf(id)
+    if (old === clean) return
+    // Benennen direkt nach dem Anlegen ist Teil des Anlegens – kein eigener Verlaufseintrag
+    const last = this.get<{ kind: string; author: string; at: string }>(
+      'SELECT kind, author, at FROM changes WHERE article_id = ? ORDER BY at DESC, id DESC LIMIT 1',
+      id
+    )
+    const justCreated =
+      last?.kind === 'create' && last.author === this.author && Date.now() - Date.parse(last.at) < NAMING_AFTER_CREATE_MS
+    this.tx(() => {
+      this.run('UPDATE articles SET title = ?, updated_at = ? WHERE id = ?', clean, this.now(), id)
+      if (!justCreated) this.log(id, 'title', `Titel geändert: ${q(old)} → ${q(clean)}`)
+    })
   }
 
   setArticleColor(id: number, color: string | null): void {
@@ -277,7 +411,12 @@ export class WikiStore {
   }
 
   setArticleIcon(id: number, icon: string | null): void {
-    this.run('UPDATE articles SET icon = ? WHERE id = ?', icon, id)
+    const old = this.get<{ icon: string | null }>('SELECT icon FROM articles WHERE id = ?', id)
+    if (!old || old.icon === icon) return
+    this.tx(() => {
+      this.run('UPDATE articles SET icon = ? WHERE id = ?', icon, id)
+      this.log(id, 'icon', icon ? 'Symbol geändert' : 'Symbol entfernt')
+    })
   }
 
   setCollapsed(id: number, collapsed: boolean): void {
@@ -312,6 +451,7 @@ export class WikiStore {
         id
       )
       this.run('UPDATE articles SET collapsed = 0 WHERE id = ?', newParentId)
+      this.log(id, 'move', `Verschoben unter ${q(this.titleOf(newParentId))}`)
     })
   }
 
@@ -323,15 +463,18 @@ export class WikiStore {
   deleteArticle(id: number): void {
     const article = this.requireLiveArticle(id)
     if (article.parent_id == null) throw new WikiError('Die Wurzel kann nicht gelöscht werden.')
-    this.run(
-      `WITH RECURSIVE sub(id) AS (
-         SELECT ? UNION ALL
-         SELECT a.id FROM articles a JOIN sub ON a.parent_id = sub.id WHERE a.deleted_at IS NULL
-       )
-       UPDATE articles SET deleted_at = ? WHERE id IN (SELECT id FROM sub) AND deleted_at IS NULL`,
-      id,
-      this.now()
-    )
+    this.tx(() => {
+      this.run(
+        `WITH RECURSIVE sub(id) AS (
+           SELECT ? UNION ALL
+           SELECT a.id FROM articles a JOIN sub ON a.parent_id = sub.id WHERE a.deleted_at IS NULL
+         )
+         UPDATE articles SET deleted_at = ? WHERE id IN (SELECT id FROM sub) AND deleted_at IS NULL`,
+        id,
+        this.now()
+      )
+      this.log(id, 'trash', 'In den Papierkorb verschoben')
+    })
   }
 
   search(query: string): SearchHit[] {
@@ -380,25 +523,106 @@ export class WikiStore {
     if (articleId === dependsOnId) throw new WikiError('Ein Artikel kann nicht von sich selbst abhängen.')
     this.requireLiveArticle(articleId)
     this.requireLiveArticle(dependsOnId)
-    this.run('INSERT OR IGNORE INTO dependencies (article_id, depends_on_id) VALUES (?, ?)', articleId, dependsOnId)
+    this.tx(() => {
+      const added = this.db
+        .prepare('INSERT OR IGNORE INTO dependencies (article_id, depends_on_id) VALUES (?, ?)')
+        .run(articleId, dependsOnId).changes
+      if (Number(added) === 0) return
+      this.log(articleId, 'dependency', `Abhängigkeit hinzugefügt: hängt ab von ${q(this.titleOf(dependsOnId))}`)
+      this.log(dependsOnId, 'dependency', `Abhängigkeit hinzugefügt: ${q(this.titleOf(articleId))} hängt hiervon ab`)
+    })
   }
 
   removeDependency(articleId: number, dependsOnId: number): void {
-    this.run('DELETE FROM dependencies WHERE article_id = ? AND depends_on_id = ?', articleId, dependsOnId)
+    this.tx(() => {
+      const removed = this.db
+        .prepare('DELETE FROM dependencies WHERE article_id = ? AND depends_on_id = ?')
+        .run(articleId, dependsOnId).changes
+      if (Number(removed) === 0) return
+      this.log(articleId, 'dependency', `Abhängigkeit entfernt: hängt nicht mehr ab von ${q(this.titleOf(dependsOnId))}`)
+      this.log(dependsOnId, 'dependency', `Abhängigkeit entfernt: ${q(this.titleOf(articleId))} hängt nicht mehr hiervon ab`)
+    })
   }
 
   reportOutage(id: number, note: string | null): void {
     this.requireLiveArticle(id)
-    this.run(
-      'UPDATE articles SET outage_since = COALESCE(outage_since, ?), outage_note = ? WHERE id = ?',
-      this.now(),
-      note?.trim() || null,
+    const before = this.get<{ outage_since: string | null; outage_note: string | null }>(
+      'SELECT outage_since, outage_note FROM articles WHERE id = ?',
       id
     )
+    const clean = note?.trim() || null
+    if (before?.outage_since && before.outage_note === clean) return
+    this.tx(() => {
+      this.run(
+        'UPDATE articles SET outage_since = COALESCE(outage_since, ?), outage_note = ? WHERE id = ?',
+        this.now(),
+        clean,
+        id
+      )
+      if (!before?.outage_since) this.log(id, 'outage', `Störung gemeldet${clean ? `: ${q(clean)}` : ''}`)
+      else this.log(id, 'outage', clean ? `Störungsnotiz: ${q(clean)}` : 'Störungsnotiz entfernt')
+    })
   }
 
   resolveOutage(id: number): void {
-    this.run('UPDATE articles SET outage_since = NULL, outage_note = NULL WHERE id = ?', id)
+    const before = this.get<{ outage_since: string | null }>('SELECT outage_since FROM articles WHERE id = ?', id)
+    if (!before?.outage_since) return
+    this.tx(() => {
+      this.run('UPDATE articles SET outage_since = NULL, outage_note = NULL WHERE id = ?', id)
+      this.log(id, 'outage', 'Störung behoben')
+    })
+  }
+
+  // ---------- Verlauf ----------
+
+  private toChange(r: Row): ChangeEntry {
+    return {
+      id: r.id as number,
+      articleId: r.article_id as number,
+      at: r.at as string,
+      author: r.author as string,
+      kind: r.kind as ChangeKind,
+      summary: r.summary as string,
+      hasVersion: r.has_version === 1
+    }
+  }
+
+  getChanges(articleId: number): ChangeEntry[] {
+    return this.all<Row>(
+      `SELECT id, article_id, at, author, kind, summary, old_content IS NOT NULL AS has_version
+         FROM changes WHERE article_id = ? ORDER BY at DESC, id DESC LIMIT 500`,
+      articleId
+    ).map((r) => this.toChange(r))
+  }
+
+  getRecentChanges(limit: number): RecentChange[] {
+    return this.all<Row>(
+      `SELECT c.id, c.article_id, c.at, c.author, c.kind, c.summary, c.old_content IS NOT NULL AS has_version,
+              a.title, a.deleted_at IS NOT NULL AS deleted
+         FROM changes c JOIN articles a ON a.id = c.article_id
+        ORDER BY c.at DESC, c.id DESC LIMIT ?`,
+      Math.max(1, Math.min(2000, Math.floor(limit)))
+    ).map((r) => ({ ...this.toChange(r), title: r.title as string, deleted: r.deleted === 1 }))
+  }
+
+  getTextVersion(changeId: number): string | null {
+    return this.get<{ old_content: string | null }>('SELECT old_content FROM changes WHERE id = ?', changeId)?.old_content ?? null
+  }
+
+  /** Setzt den Text auf die Fassung vor einer Änderung zurück; der aktuelle Text bleibt im Verlauf. */
+  restoreTextVersion(changeId: number): void {
+    const change = this.get<{ article_id: number; at: string; author: string; old_content: string | null }>(
+      'SELECT article_id, at, author, old_content FROM changes WHERE id = ?',
+      changeId
+    )
+    if (!change?.old_content) throw new WikiError('Diese Fassung ist nicht mehr gespeichert.')
+    this.requireLiveArticle(change.article_id)
+    this.writeContent(
+      change.article_id,
+      change.old_content,
+      docText(change.old_content),
+      `Text auf die Fassung vor der Änderung von ${change.author} (${formatStamp(change.at)}) zurückgesetzt`
+    )
   }
 
   // ---------- Papierkorb ----------
@@ -453,6 +677,7 @@ export class WikiStore {
           id
         )
       }
+      this.log(id, 'trash', 'Aus dem Papierkorb wiederhergestellt')
     })
   }
 
@@ -469,7 +694,10 @@ export class WikiStore {
   /** Entfernt Bilder, die in keinem Artikel (auch nicht im Papierkorb) mehr vorkommen. */
   cleanupImages(minAgeMinutes = 0): number {
     const used = new Set<number>()
-    for (const r of this.all<{ content: string }>('SELECT content FROM articles WHERE content IS NOT NULL')) {
+    for (const r of this.all<{ content: string }>(
+      `SELECT content FROM articles WHERE content IS NOT NULL
+       UNION ALL SELECT old_content FROM changes WHERE old_content IS NOT NULL`
+    )) {
       for (const m of r.content.matchAll(IMAGE_URL_PATTERN)) used.add(Number(m[1]))
     }
     const cutoff = new Date(Date.now() - minAgeMinutes * 60_000).toISOString()
@@ -498,21 +726,56 @@ export class WikiStore {
   }
 
   addField(articleId: number, label: string, value = ''): number {
-    return this.run(
-      'INSERT INTO article_fields (article_id, label, value, position) VALUES (?, ?, ?, ?)',
-      articleId,
-      label.trim() || 'Feld',
-      value.trim(),
-      this.nextPosition('article_fields', 'article_id', articleId)
-    )
+    const cleanLabel = label.trim() || 'Feld'
+    const cleanValue = value.trim()
+    return this.tx(() => {
+      const id = this.run(
+        'INSERT INTO article_fields (article_id, label, value, position) VALUES (?, ?, ?, ?)',
+        articleId,
+        cleanLabel,
+        cleanValue,
+        this.nextPosition('article_fields', 'article_id', articleId)
+      )
+      const shown = cleanValue && !SECRET_LABEL.test(cleanLabel) ? `: ${q(cleanValue)}` : ''
+      this.log(articleId, 'field', `Feld ${q(cleanLabel)} hinzugefügt${shown}`)
+      return id
+    })
   }
 
   updateField(id: number, label: string, value: string): void {
-    this.run('UPDATE article_fields SET label = ?, value = ? WHERE id = ?', label.trim() || 'Feld', value.trim(), id)
+    const old = this.get<{ article_id: number; label: string; value: string }>(
+      'SELECT article_id, label, value FROM article_fields WHERE id = ?',
+      id
+    )
+    const cleanLabel = label.trim() || 'Feld'
+    const cleanValue = value.trim()
+    if (!old || (old.label === cleanLabel && old.value === cleanValue)) return
+    const parts: string[] = []
+    if (old.label !== cleanLabel) parts.push(`Feld ${q(old.label)} umbenannt in ${q(cleanLabel)}`)
+    if (old.value !== cleanValue) {
+      // Werte von Passwort-Feldern o. Ä. nicht in den Verlauf schreiben
+      if (SECRET_LABEL.test(cleanLabel) || SECRET_LABEL.test(old.label)) parts.push(`${cleanLabel}: Wert geändert`)
+      else if (!old.value) parts.push(`${cleanLabel}: ${q(cleanValue)} eingetragen`)
+      else if (!cleanValue) parts.push(`${cleanLabel}: ${q(old.value)} entfernt`)
+      else parts.push(`${cleanLabel}: ${q(old.value)} → ${q(cleanValue)}`)
+    }
+    this.tx(() => {
+      this.run('UPDATE article_fields SET label = ?, value = ? WHERE id = ?', cleanLabel, cleanValue, id)
+      this.log(old.article_id, 'field', parts.join('; '))
+    })
   }
 
   deleteField(id: number): void {
-    this.run('DELETE FROM article_fields WHERE id = ?', id)
+    const old = this.get<{ article_id: number; label: string; value: string }>(
+      'SELECT article_id, label, value FROM article_fields WHERE id = ?',
+      id
+    )
+    if (!old) return
+    this.tx(() => {
+      this.run('DELETE FROM article_fields WHERE id = ?', id)
+      const shown = old.value && !SECRET_LABEL.test(old.label) ? ` (war ${q(old.value)})` : ''
+      this.log(old.article_id, 'field', `Feld ${q(old.label)} entfernt${shown}`)
+    })
   }
 
   moveField(id: number, direction: -1 | 1): void {
@@ -549,22 +812,42 @@ export class WikiStore {
     }))
   }
 
+  private checklistInfo(id: number): { article_id: number; title: string } | undefined {
+    return this.get<{ article_id: number; title: string }>('SELECT article_id, title FROM checklists WHERE id = ?', id)
+  }
+
   createChecklist(articleId: number, title: string): number {
     this.requireLiveArticle(articleId)
-    return this.run(
-      'INSERT INTO checklists (article_id, title, position) VALUES (?, ?, ?)',
-      articleId,
-      title.trim() || 'Ablauf',
-      this.nextPosition('checklists', 'article_id', articleId)
-    )
+    const clean = title.trim() || 'Ablauf'
+    return this.tx(() => {
+      const id = this.run(
+        'INSERT INTO checklists (article_id, title, position) VALUES (?, ?, ?)',
+        articleId,
+        clean,
+        this.nextPosition('checklists', 'article_id', articleId)
+      )
+      this.log(articleId, 'checklist', `Ablauf ${q(clean)} angelegt`)
+      return id
+    })
   }
 
   renameChecklist(id: number, title: string): void {
-    this.run('UPDATE checklists SET title = ? WHERE id = ?', title.trim() || 'Ablauf', id)
+    const clean = title.trim() || 'Ablauf'
+    const list = this.checklistInfo(id)
+    if (!list || list.title === clean) return
+    this.tx(() => {
+      this.run('UPDATE checklists SET title = ? WHERE id = ?', clean, id)
+      this.log(list.article_id, 'checklist', `Ablauf ${q(list.title)} umbenannt in ${q(clean)}`)
+    })
   }
 
   deleteChecklist(id: number): void {
-    this.run('DELETE FROM checklists WHERE id = ?', id)
+    const list = this.checklistInfo(id)
+    if (!list) return
+    this.tx(() => {
+      this.run('DELETE FROM checklists WHERE id = ?', id)
+      this.log(list.article_id, 'checklist', `Ablauf ${q(list.title)} gelöscht`)
+    })
   }
 
   moveChecklist(id: number, direction: -1 | 1): void {
@@ -572,16 +855,36 @@ export class WikiStore {
   }
 
   addItem(checklistId: number, text: string): number {
-    return this.run(
-      'INSERT INTO checklist_items (checklist_id, text, position) VALUES (?, ?, ?)',
-      checklistId,
-      text.trim(),
-      this.nextPosition('checklist_items', 'checklist_id', checklistId)
+    const clean = text.trim()
+    const list = this.checklistInfo(checklistId)
+    return this.tx(() => {
+      const id = this.run(
+        'INSERT INTO checklist_items (checklist_id, text, position) VALUES (?, ?, ?)',
+        checklistId,
+        clean,
+        this.nextPosition('checklist_items', 'checklist_id', checklistId)
+      )
+      if (list) this.log(list.article_id, 'checklist', `Schritt ${q(clean)} zu ${q(list.title)} hinzugefügt`)
+      return id
+    })
+  }
+
+  private itemInfo(id: number): { text: string; article_id: number; title: string } | undefined {
+    return this.get<{ text: string; article_id: number; title: string }>(
+      `SELECT i.text, c.article_id, c.title FROM checklist_items i JOIN checklists c ON c.id = i.checklist_id
+        WHERE i.id = ?`,
+      id
     )
   }
 
   updateItemText(id: number, text: string): void {
-    this.run('UPDATE checklist_items SET text = ? WHERE id = ?', text.trim(), id)
+    const clean = text.trim()
+    const item = this.itemInfo(id)
+    if (!item || item.text === clean) return
+    this.tx(() => {
+      this.run('UPDATE checklist_items SET text = ? WHERE id = ?', clean, id)
+      this.log(item.article_id, 'checklist', `Schritt in ${q(item.title)} geändert: ${q(item.text)} → ${q(clean)}`)
+    })
   }
 
   setItemChecked(id: number, checked: boolean): void {
@@ -594,7 +897,12 @@ export class WikiStore {
   }
 
   deleteItem(id: number): void {
-    this.run('DELETE FROM checklist_items WHERE id = ?', id)
+    const item = this.itemInfo(id)
+    if (!item) return
+    this.tx(() => {
+      this.run('DELETE FROM checklist_items WHERE id = ?', id)
+      this.log(item.article_id, 'checklist', `Schritt ${q(item.text)} aus ${q(item.title)} entfernt`)
+    })
   }
 
   moveItem(id: number, direction: -1 | 1): void {
@@ -620,6 +928,11 @@ export class WikiStore {
         JSON.stringify(snapshot)
       )
       this.resetChecklist(checklistId)
+      const list = this.checklistInfo(checklistId)
+      const done = snapshot.filter((i) => i.checked).length
+      if (list) {
+        this.log(list.article_id, 'checklist', `Ablauf ${q(list.title)} durchgeführt (${done}/${snapshot.length} Schritte)`)
+      }
     })
   }
 
@@ -637,7 +950,16 @@ export class WikiStore {
   }
 
   deleteRun(id: number): void {
-    this.run('DELETE FROM checklist_runs WHERE id = ?', id)
+    const run = this.get<{ article_id: number; title: string; completed_at: string }>(
+      `SELECT c.article_id, c.title, r.completed_at FROM checklist_runs r JOIN checklists c ON c.id = r.checklist_id
+        WHERE r.id = ?`,
+      id
+    )
+    if (!run) return
+    this.tx(() => {
+      this.run('DELETE FROM checklist_runs WHERE id = ?', id)
+      this.log(run.article_id, 'checklist', `Protokoll von ${q(run.title)} vom ${formatStamp(run.completed_at)} gelöscht`)
+    })
   }
 
   // ---------- Bilder ----------

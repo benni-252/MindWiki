@@ -67,3 +67,36 @@ export function byTitle(tree: TreeData, ids: Iterable<number>): ArticleSummary[]
     .filter((a): a is ArticleSummary => !!a)
     .sort((a, b) => a.title.localeCompare(b.title, 'de'))
 }
+
+/** Pro Wiki-Datei und Rechner: wann welcher Artikel zuletzt angesehen wurde. */
+export interface SeenState {
+  /** Änderungen vor diesem Zeitpunkt gelten als gesehen (erster Start mit dieser Datei) */
+  baseline: string
+  items: Record<string, string>
+}
+
+export function seenAt(seen: SeenState, id: number): string {
+  return seen.items[id] ?? seen.baseline
+}
+
+/** Hat jemand anderes den Artikel geändert, seit ich ihn zuletzt angesehen habe? */
+export function isUnseen(article: ArticleSummary, seen: SeenState | null): boolean {
+  return !!seen && article.lastOtherChangeAt != null && article.lastOtherChangeAt > seenAt(seen, article.id)
+}
+
+export function unseenArticles(tree: TreeData, seen: SeenState | null): ArticleSummary[] {
+  return tree.articles.filter((a) => isUnseen(a, seen))
+}
+
+/** „heute, 10:14“, „gestern, 09:02“ oder „28.10.2026, 16:40“ */
+export function formatWhen(iso: string): string {
+  const d = new Date(iso)
+  const time = d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+  const day = (x: Date): string => x.toDateString()
+  const today = new Date()
+  const yesterday = new Date(today)
+  yesterday.setDate(today.getDate() - 1)
+  if (day(d) === day(today)) return `heute, ${time}`
+  if (day(d) === day(yesterday)) return `gestern, ${time}`
+  return `${d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}, ${time}`
+}

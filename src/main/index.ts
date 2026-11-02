@@ -4,7 +4,7 @@ import path from 'node:path'
 import { IMAGE_SCHEME, type MenuAction, type WikiEvent } from '../shared/types'
 import { registerIpc, tryOpen } from './ipc'
 import { defaultDbPath, loadSettings } from './settings'
-import { closeWiki, currentStore, onWikiChange, wikiName } from './wiki'
+import { closeWiki, currentStore, onWikiChange, peekStore, wikiName } from './wiki'
 
 // Für automatische Tests: eigene Einstellungen und Datenbank statt der echten.
 if (process.env.MINDWIKI_USER_DATA) app.setPath('userData', process.env.MINDWIKI_USER_DATA)
@@ -44,6 +44,8 @@ function buildMenu(): void {
         item('Sicherung erstellen…', 'backup-db', 'CmdOrCtrl+Shift+S'),
         item('Speicherort im Explorer zeigen', 'reveal-db'),
         { type: 'separator' },
+        item('Mein Name im Verlauf…', 'user-name'),
+        { type: 'separator' },
         { role: 'quit', label: 'Beenden' }
       ]
     },
@@ -59,6 +61,7 @@ function buildMenu(): void {
         { role: 'selectAll', label: 'Alles auswählen' },
         { type: 'separator' },
         item('Suchen…', 'search', 'CmdOrCtrl+K'),
+        item('Letzte Änderungen…', 'changes', 'CmdOrCtrl+Shift+H'),
         item('Papierkorb', 'trash')
       ]
     },
@@ -83,6 +86,24 @@ function buildMenu(): void {
     }
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+// Andere Rechner können dieselbe Datei ändern: regelmäßig nachsehen und die Oberfläche neu laden lassen.
+const WATCH_INTERVAL_MS = 2000
+let seenDataVersion: number | null = null
+
+function watchForeignChanges(): void {
+  setInterval(() => {
+    const store = peekStore()
+    if (!store || !win) return
+    try {
+      const version = store.dataVersion()
+      if (seenDataVersion !== null && version !== seenDataVersion) send({ type: 'external-change' })
+      seenDataVersion = version
+    } catch {
+      // Datei kurz nicht erreichbar (Netzlaufwerk) – beim nächsten Mal erneut versuchen
+    }
+  }, WATCH_INTERVAL_MS)
 }
 
 function createWindow(): void {
@@ -174,7 +195,10 @@ if (!app.requestSingleInstanceLock()) {
         win?.close()
       }
     )
-    onWikiChange(updateTitle)
+    onWikiChange(() => {
+      seenDataVersion = null
+      updateTitle()
+    })
 
     if (!openInitialWiki()) {
       dialog.showErrorBox('MindWiki', 'Es konnte keine Wiki-Datenbank geöffnet oder angelegt werden.')
@@ -183,6 +207,7 @@ if (!app.requestSingleInstanceLock()) {
     }
     buildMenu()
     createWindow()
+    watchForeignChanges()
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()

@@ -84,10 +84,39 @@ export const MIGRATIONS: string[] = [
     CHECK (article_id <> depends_on_id)
   ) WITHOUT ROWID;
   CREATE INDEX idx_dependencies_on ON dependencies(depends_on_id);
+  `,
+  // v4: Verlauf – wer hat wann was geändert, bei Textänderungen mit der Fassung davor
+  `
+  CREATE TABLE changes (
+    id INTEGER PRIMARY KEY,
+    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    at TEXT NOT NULL,
+    author TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    old_content TEXT
+  );
+  CREATE INDEX idx_changes_article ON changes(article_id, at);
+  CREATE INDEX idx_changes_at ON changes(at);
   `
 ]
 
 export class NotAWikiError extends Error {}
+
+export const BUSY_TIMEOUT_MS = 10_000
+
+/**
+ * Normales Rollback-Journal statt WAL: WAL funktioniert nicht, wenn mehrere Rechner dieselbe
+ * Datei über ein Netzlaufwerk öffnen. Ältere Versionen haben WAL eingeschaltet – das wird hier
+ * zurückgestellt, sobald niemand sonst die Datei offen hat.
+ */
+function useNetworkSafeJournal(db: DatabaseSync): void {
+  try {
+    db.exec('PRAGMA journal_mode = DELETE')
+  } catch (err) {
+    console.warn('Journal-Modus konnte nicht umgestellt werden', err)
+  }
+}
 
 /**
  * Öffnet (oder erstellt) eine Wiki-Datenbank, spielt Migrationen ein und legt bei Bedarf
@@ -98,7 +127,9 @@ export function openDatabase(file: string, rootTitle: string): DatabaseSync {
   const db = new DatabaseSync(file)
   try {
     db.exec('PRAGMA foreign_keys = ON')
-    if (file !== ':memory:') db.exec('PRAGMA journal_mode = WAL')
+    // Mehrere Rechner können dieselbe Datei öffnen: kurz warten statt sofort „gesperrt“ melden.
+    db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`)
+    if (file !== ':memory:') useNetworkSafeJournal(db)
 
     const version = (db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
     if (version === 0) {
@@ -119,7 +150,7 @@ export function openDatabase(file: string, rootTitle: string): DatabaseSync {
     }
 
     for (let v = version; v < MIGRATIONS.length; v++) {
-      db.exec('BEGIN')
+      db.exec('BEGIN IMMEDIATE')
       try {
         db.exec(MIGRATIONS[v])
         db.exec(`PRAGMA user_version = ${v + 1}`)

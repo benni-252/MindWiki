@@ -3,11 +3,19 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { RPC_METHODS, type WikiRpc } from '../shared/types'
 import { backupTo, NotAWikiError } from './db'
-import { defaultDbPath } from './settings'
+import { defaultDbPath, saveSettings, userName } from './settings'
 import type { WikiStore } from './store'
 import { currentDbFile, currentStore, openWiki, wikiName } from './wiki'
 
-type FileOps = 'getDbInfo' | 'newDb' | 'openDb' | 'backupDb' | 'revealDb' | 'confirmClose'
+type FileOps =
+  | 'getDbInfo'
+  | 'newDb'
+  | 'openDb'
+  | 'backupDb'
+  | 'revealDb'
+  | 'confirmClose'
+  | 'getUserName'
+  | 'setUserName'
 
 // Bricht die Typprüfung, wenn WikiStore eine Datenmethode der API nicht (passend) anbietet.
 const storeImplementsRpc = (s: WikiStore): Omit<WikiRpc, FileOps> => s
@@ -97,6 +105,14 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
     },
 
     revealDb: () => shell.showItemInFolder(currentDbFile()),
+
+    getUserName: () => userName(),
+
+    setUserName: (name: string) => {
+      saveSettings({ userName: name.trim().slice(0, 60) || undefined })
+      currentStore().author = userName()
+      return userName()
+    },
 
     confirmClose: allowClose
   }
