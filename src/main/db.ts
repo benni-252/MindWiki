@@ -98,6 +98,17 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_changes_article ON changes(article_id, at);
   CREATE INDEX idx_changes_at ON changes(at);
+  `,
+  // v5: Freigaben – neue Artikel und Änderungsvorschläge (Entwürfe als eigene, versteckte Artikel)
+  `
+  ALTER TABLE articles ADD COLUMN created_by TEXT;
+  ALTER TABLE articles ADD COLUMN approved_at TEXT;
+  ALTER TABLE articles ADD COLUMN approved_by TEXT;
+  ALTER TABLE articles ADD COLUMN draft_of INTEGER REFERENCES articles(id) ON DELETE CASCADE;
+  ALTER TABLE checklists ADD COLUMN source_id INTEGER;
+  UPDATE articles SET approved_at = created_at;
+  CREATE UNIQUE INDEX idx_articles_draft ON articles(draft_of) WHERE draft_of IS NOT NULL;
+  INSERT OR IGNORE INTO meta (key, value) VALUES ('approval_required', '0');
   `
 ]
 
@@ -163,7 +174,11 @@ export function openDatabase(file: string, rootTitle: string): DatabaseSync {
 
     db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('app', ?)").run(APP_MARKER)
     const root = db.prepare('SELECT id FROM articles WHERE parent_id IS NULL').get()
-    if (!root) db.prepare('INSERT INTO articles (parent_id, title) VALUES (NULL, ?)').run(rootTitle)
+    if (!root) {
+      db.prepare("INSERT INTO articles (parent_id, title, approved_at) VALUES (NULL, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))").run(
+        rootTitle
+      )
+    }
     return db
   } catch (err) {
     db.close()

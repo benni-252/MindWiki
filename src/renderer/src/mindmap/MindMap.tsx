@@ -86,6 +86,7 @@ export function MindMap(): React.JSX.Element {
   const centerRequest = useWiki((s) => s.centerRequest)
   const fitNonce = useWiki((s) => s.fitNonce)
   const seen = useWiki((s) => s.seen)
+  const userName = useWiki((s) => s.userName)
   const flow = useReactFlow<ArticleFlowNode>()
   const wrapperRef = useRef<HTMLDivElement>(null)
 
@@ -141,7 +142,16 @@ export function MindMap(): React.JSX.Element {
       const key = String(n.id)
       const pos = drag?.id === n.id ? drag : (positions.get(n.id) ?? n)
       const unseen = isUnseen(article, seen)
-      const tooltip = nodeTooltip(article, impact, byId)
+      const approval = article.draftId != null ? 'pending' : tree.approvalRequired && !article.approved ? 'draft' : null
+      const approvalNote =
+        approval === 'draft'
+          ? `\nEntwurf von ${article.createdBy ?? '?'} – wartet auf Freigabe`
+          : approval === 'pending'
+            ? article.draftBy === userName
+              ? '\nDein Entwurf – die anderen sehen noch den alten Stand'
+              : `\nÄnderungen von ${article.draftBy ?? '?'} warten auf Freigabe`
+            : ''
+      const tooltip = nodeTooltip(article, impact, byId) + approvalNote
       result.push({
         id: key,
         type: 'article',
@@ -165,13 +175,14 @@ export function MindMap(): React.JSX.Element {
             unseen && article.lastOtherChangeAt
               ? `${tooltip}\nNeu geändert von ${article.lastOtherChangeBy ?? 'jemand anderem'} (${formatWhen(article.lastOtherChangeAt)})`
               : tooltip,
-          unseen
+          unseen,
+          approval
         }
       })
     }
     return result
     // sizeVersion: gemessene Größen in die Knoten übernehmen
-  }, [tree, layout, positions, drag, dropTarget, selectedId, renamingId, flashId, sizeVersion, seen])
+  }, [tree, layout, positions, drag, dropTarget, selectedId, renamingId, flashId, sizeVersion, seen, userName])
 
   const edges = useMemo<Edge[]>(() => {
     if (!tree) return []

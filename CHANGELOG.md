@@ -2,6 +2,23 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.2.0
+
+**Neu: Freigaben nach dem Vier-Augen-Prinzip**
+- Einschalten unter *Datei › Freigaben…* – gilt für alle, die dieselbe Wiki-Datei benutzen.
+- Neue Artikel sind Entwürfe (gestrichelt), bis jemand anderes sie freigibt oder ablehnt.
+- Änderungen an freigegebenen Artikeln laufen über „Bearbeiten“: Die anderen sehen den alten Stand, bis jemand den Vorschlag freigegeben hat. Vor der Freigabe zeigt ein Vergleich, was sich geändert hat (Titel, Text, Steckbrief, Abläufe).
+- Das Schild-Symbol oben zeigt, wie viele Freigaben auf dich warten.
+- Störungen, Abhängigkeiten und das Abhaken von Abläufen gehen weiterhin sofort.
+
+**Download**
+- `MindWiki-Setup-1.2.0.exe` – Installer
+- `MindWiki-1.2.0-portable.exe` – ohne Installation starten
+
+Beim ersten Start wird die Datenbank aktualisiert; vorher legt MindWiki automatisch eine Sicherung an. Wenn mehrere Leute dieselbe Datei benutzen, sollten alle diese Version installieren.
+
+**Hinweis:** Die .exe ist nicht signiert. Windows SmartScreen fragt beim ersten Start nach – „Weitere Informationen“ → „Trotzdem ausführen“.
+
 ## 1.1.0
 
 **Neu: Abhängigkeiten und Störungen**

@@ -23,6 +23,13 @@ export interface ArticleSummary {
   /** Letzte Änderung durch jemand anderen als den aktuellen Nutzer */
   lastOtherChangeAt: string | null
   lastOtherChangeBy: string | null
+  /** false: neu angelegt und noch nicht freigegeben (nur bei eingeschalteter Freigabe-Pflicht) */
+  approved: boolean
+  createdBy: string | null
+  /** Offener Änderungsvorschlag (Entwurf) zu diesem Artikel */
+  draftId: number | null
+  draftBy: string | null
+  draftAt: string | null
 }
 
 /** Ein Steckbrief-Feld eines Artikels (z. B. „IP-Adresse“ = „10.0.0.5“). */
@@ -62,6 +69,19 @@ export interface TreeData {
   articles: ArticleSummary[]
   links: LinkEdge[]
   dependencies: DependencyEdge[]
+  /** Neue Artikel und Änderungen müssen von jemand anderem freigegeben werden */
+  approvalRequired: boolean
+}
+
+/** Unterschiede zwischen einem freigegebenen Artikel und dem Änderungsvorschlag dazu. */
+export interface DraftDiff {
+  author: string
+  since: string
+  title: { before: string; after: string } | null
+  iconChanged: boolean
+  fields: { label: string; before: string | null; after: string | null }[]
+  checklists: { title: string; change: 'added' | 'removed' | 'changed'; detail: string[] }[]
+  text: { before: string; after: string } | null
 }
 
 export interface ChecklistItem {
@@ -106,6 +126,7 @@ export type ChangeKind =
   | 'outage'
   | 'move'
   | 'trash'
+  | 'approval'
 
 /** Ein Eintrag im Verlauf eines Artikels: wer hat wann was geändert. */
 export interface ChangeEntry {
@@ -182,6 +203,15 @@ export interface WikiRpc {
   getUserName(): string
   setUserName(name: string): string
 
+  /** Entwurf zu einem freigegebenen Artikel beginnen (oder den eigenen weiterführen); liefert seine ID */
+  startDraft(id: number): number
+  discardDraft(id: number): void
+  /** Neuen Artikel oder Änderungsvorschlag freigeben (nicht den eigenen) */
+  approve(id: number): void
+  reject(id: number, reason: string | null): void
+  getDraftDiff(id: number): DraftDiff | null
+  setApprovalRequired(on: boolean): void
+
   listTrash(): TrashEntry[]
   restoreArticle(id: number): void
   purgeArticle(id: number): void
@@ -242,6 +272,12 @@ export const RPC_METHODS = [
   'restoreTextVersion',
   'getUserName',
   'setUserName',
+  'startDraft',
+  'discardDraft',
+  'approve',
+  'reject',
+  'getDraftDiff',
+  'setApprovalRequired',
   'listTrash',
   'restoreArticle',
   'purgeArticle',
@@ -289,6 +325,7 @@ export type MenuAction =
   | 'outages'
   | 'changes'
   | 'user-name'
+  | 'approvals'
   | 'toggle-links'
   | 'fit'
   | 'shortcuts'

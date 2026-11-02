@@ -1,6 +1,7 @@
-import { ChevronDown, History, Keyboard, Link2, Plus, Scan, Search, Trash2, TriangleAlert } from 'lucide-react'
+import { ChevronDown, History, Keyboard, Link2, Plus, Scan, Search, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { runAction } from './actions'
+import { pendingApprovals } from './dialogs/ApprovalsDialog'
 import { useWiki } from './store'
 import { TemplateList } from './TemplateList'
 import { impactOf, indexTree, unseenArticles } from './treeUtils'
@@ -88,6 +89,26 @@ function ChangesButton(): React.JSX.Element {
   )
 }
 
+/** Freigaben: nur bei Freigabe-Pflicht oder offenen Entwürfen; Zähler für das, was ich freigeben kann. */
+function ApprovalsButton(): React.JSX.Element | null {
+  const tree = useWiki((s) => s.tree)
+  const userName = useWiki((s) => s.userName)
+  if (!tree) return null
+  const { forMe, mine } = pendingApprovals(tree, userName)
+  if (!tree.approvalRequired && forMe.length + mine.length === 0) return null
+  const count = forMe.length
+  return (
+    <button
+      className={`icon-btn badge-host ${count > 0 ? 'has-approvals' : ''}`}
+      title={count > 0 ? `${count} ${count === 1 ? 'Freigabe wartet' : 'Freigaben warten'} auf dich` : 'Freigaben'}
+      onClick={() => void runAction('approvals')}
+    >
+      <ShieldCheck size={18} />
+      {count > 0 && <span className="badge badge-approval">{count > 99 ? '99+' : count}</span>}
+    </button>
+  )
+}
+
 export function TopBar(): React.JSX.Element {
   const tree = useWiki((s) => s.tree)
   const dbInfo = useWiki((s) => s.dbInfo)
@@ -131,6 +152,7 @@ export function TopBar(): React.JSX.Element {
         <button className="icon-btn" title="Ganze Mind Map zeigen (Strg+0)" onClick={() => void runAction('fit')}>
           <Scan size={18} />
         </button>
+        <ApprovalsButton />
         <ChangesButton />
         <button className="icon-btn" title="Papierkorb" onClick={() => void runAction('trash')}>
           <Trash2 size={18} />

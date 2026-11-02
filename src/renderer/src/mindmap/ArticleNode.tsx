@@ -1,5 +1,5 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
-import { CircleAlert, ListChecks, TriangleAlert } from 'lucide-react'
+import { CircleAlert, ListChecks, PenLine, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import type { ImpactStatus } from '../../../shared/impact'
 import type { ArticleSummary } from '../../../shared/types'
@@ -22,6 +22,8 @@ export interface ArticleNodeData extends Record<string, unknown> {
   tooltip: string
   /** Jemand anderes hat den Artikel geändert, seit ich ihn zuletzt angesehen habe */
   unseen: boolean
+  /** 'draft': neuer Artikel ohne Freigabe; 'pending': Änderungen warten auf Freigabe */
+  approval: 'draft' | 'pending' | null
 }
 
 export type ArticleFlowNode = Node<ArticleNodeData, 'article'>
@@ -79,11 +81,12 @@ function RenameInput({ article }: { article: ArticleSummary }): React.JSX.Elemen
 }
 
 export function ArticleNode({ data }: NodeProps<ArticleFlowNode>): React.JSX.Element {
-  const { article, layout, selected, dropTarget, renaming, flash, status, hiddenStatus, tooltip, unseen } = data
+  const { article, layout, selected, dropTarget, renaming, flash, status, hiddenStatus, tooltip, unseen, approval } = data
   const depthClass = `depth-${Math.min(layout.depth, 3)}`
   const classes = ['mm-node', depthClass, `side-${layout.side}`]
   if (status) classes.push(status)
   if (unseen) classes.push('unseen')
+  if (approval) classes.push(approval)
   if (selected) classes.push('selected')
   if (dropTarget) classes.push('drop-target')
   if (flash) classes.push('flash')
@@ -105,6 +108,7 @@ export function ArticleNode({ data }: NodeProps<ArticleFlowNode>): React.JSX.Ele
       )}
       {unseen && <span className="mm-news" aria-label="Neu geändert" />}
       {renaming ? <RenameInput article={article} /> : <span className="mm-title">{article.title}</span>}
+      {approval === 'pending' && <PenLine size={13} className="mm-pending" aria-label="Änderungen warten auf Freigabe" />}
       {status === 'outage' && <TriangleAlert size={14} className="mm-status" aria-label="Störung" />}
       {status === 'affected' && <CircleAlert size={14} className="mm-status" aria-label="Betroffen" />}
       {article.hasText && !renaming && <span className="mm-dot" title="Artikel enthält Text" />}

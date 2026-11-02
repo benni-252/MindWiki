@@ -22,6 +22,16 @@ Lokales Wiki als Mind Map: Artikel hängen in einem Baum (Hauptthema in der Mitt
 - **Dein Name:** Änderungen erscheinen mit dem Windows-Benutzernamen; ändern über *Datei › Mein Name im Verlauf*.
 - Ein- und Ausklappen von Ästen ist in der Datei gespeichert und gilt damit für alle.
 
+### Freigaben (Vier-Augen-Prinzip)
+
+Einschalten unter *Datei › Freigaben…* (gilt für alle, die die Wiki-Datei benutzen):
+
+- **Neue Artikel** sind zunächst Entwürfe: in der Mind Map gestrichelt, im Artikel steht „wartet auf Freigabe“. Die Autorin kann sie weiter bearbeiten; freigeben oder ablehnen kann nur jemand anderes. Abgelehnte Artikel landen im Papierkorb.
+- **Änderungen an freigegebenen Artikeln** beginnen mit „Bearbeiten“: Man arbeitet an einem eigenen Entwurf (Text, Titel, Symbol, Steckbrief, Abläufe), die anderen sehen so lange den freigegebenen Stand. Ein Stift-Symbol am Knoten zeigt den offenen Vorschlag. Andere sehen mit „Änderungen ansehen“ den Vergleich (rot bisher, grün neu) und können freigeben oder mit Begründung ablehnen. Pro Artikel gibt es höchstens einen offenen Vorschlag.
+- Das Schild-Symbol oben zählt, was auf deine Freigabe wartet, und listet auch deine eigenen offenen Entwürfe.
+- Sofort und ohne Freigabe gehen weiterhin: Störung melden/beheben, Abhängigkeiten, Abläufe abhaken und protokollieren, Verschieben, Papierkorb.
+- Beim Ausschalten werden alle offenen Entwürfe übernommen. Wer freigeben darf, wird am Namen im Verlauf erkannt – das ist eine Absprache im Team, kein Schutz mit Passwort.
+
 ### IT-Funktionen
 
 - **Vorlagen:** Server / System, Netzwerkgerät, Software, Anleitung, Störung / Fehlerbehebung, Dienstleister / Kontakt – jeweils mit Steckbrief-Feldern, Gliederung und passendem Ablauf. Erreichbar über den Plus-Knopf oben, per Rechtsklick „Unterartikel aus Vorlage“ oder in einem leeren Artikel über „Mit Vorlage starten“.

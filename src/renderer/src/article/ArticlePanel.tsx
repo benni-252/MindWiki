@@ -7,6 +7,7 @@ import { ChecklistSection } from '../checklist/ChecklistSection'
 import { IconPicker, NodeIcon } from '../icons'
 import { useWiki } from '../store'
 import { indexTree, pathTo, seenAt } from '../treeUtils'
+import { ApprovalBanner } from './ApprovalBanner'
 import { Backlinks } from './Backlinks'
 import { Dependencies } from './Dependencies'
 import { Editor, type SaveStatus } from './Editor'
@@ -131,6 +132,18 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
   const readMode = useWiki((s) => s.readMode)
   const panelMax = useWiki((s) => s.panelMax)
   const version = useWiki((s) => s.articleVersion)
+  const userName = useWiki((s) => s.userName)
+  const summary = tree ? indexTree(tree).byId.get(id) : undefined
+
+  // Freigabe: Inhalt kommt aus dem eigenen Entwurf; fremde Entwürfe und freigegebene Artikel sind nur lesbar.
+  const contentId = summary?.draftId != null && summary.draftBy === userName ? summary.draftId : id
+  const locked =
+    !!tree?.approvalRequired &&
+    contentId === id &&
+    !!summary &&
+    (summary.approved || (!!summary.createdBy && summary.createdBy !== userName))
+  const contentReadOnly = readMode || locked
+
   const [article, setArticle] = useState<Article | null | undefined>(undefined)
   const [fields, setFields] = useState<ArticleField[]>([])
   const [status, setStatus] = useState<SaveStatus>('saved')
@@ -141,12 +154,12 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
   useEffect(() => {
     let alive = true
     // Beim Neuladen desselben Artikels (Änderung von anderen) den alten Stand stehen lassen, kein Flackern
-    if (loadedId.current !== id) {
+    if (loadedId.current !== contentId) {
       setArticle(undefined)
       setStatus('saved')
     }
-    loadedId.current = id
-    Promise.all([wiki.getArticle(id), wiki.getFields(id)])
+    loadedId.current = contentId
+    Promise.all([wiki.getArticle(contentId), wiki.getFields(contentId)])
       .then(([a, f]) => {
         if (!alive) return
         setArticle(a)
@@ -159,9 +172,9 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
     return () => {
       alive = false
     }
-  }, [id, version])
+  }, [contentId, version])
 
-  const reloadFields = useCallback(async () => setFields(await wiki.getFields(id)), [id])
+  const reloadFields = useCallback(async () => setFields(await wiki.getFields(contentId)), [contentId])
 
   // Was andere geändert haben, seit ich den Artikel zuletzt gesehen habe – Stand beim Öffnen merken
   const newSince = useMemo(() => {
@@ -171,7 +184,6 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
   const lastOther = tree ? indexTree(tree).byId.get(id)?.lastOtherChangeAt : null
   useEffect(() => useWiki.getState().markSeen(id), [id, lastOther])
 
-  const summary = tree ? indexTree(tree).byId.get(id) : undefined
   const path = tree ? pathTo(tree, id).slice(0, -1) : []
   const s = useWiki.getState()
   const isEmpty = !!summary && !summary.hasText && summary.checkTotal === 0 && fields.length === 0
@@ -223,28 +235,33 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
         <div className="panel-inner">
           {summary && (
             <div className="title-row">
-              <IconButton id={id} icon={summary.icon} readOnly={readMode} />
-              <TitleInput id={id} title={summary.title} readOnly={readMode} />
+              <IconButton id={contentId} icon={summary.icon} readOnly={contentReadOnly} />
+              <TitleInput id={contentId} title={summary.title} readOnly={contentReadOnly} />
             </div>
           )}
           {article === undefined && <p className="muted">Lade …</p>}
           {article === null && <p className="muted">Dieser Artikel existiert nicht mehr.</p>}
           {article && (
             <>
-              <OutageBanner id={article.id} readMode={readMode} />
-              {isEmpty && !readMode && <TemplateChooser id={article.id} />}
-              <FactSheet articleId={article.id} fields={fields} readMode={readMode} reload={reloadFields} />
-              <Dependencies id={article.id} readMode={readMode} />
+              <ApprovalBanner id={id} readMode={readMode} />
+              <OutageBanner id={id} readMode={readMode} />
+              {isEmpty && !contentReadOnly && <TemplateChooser id={article.id} />}
+              <FactSheet articleId={article.id} fields={fields} readMode={contentReadOnly} reload={reloadFields} />
+              <Dependencies id={id} readMode={readMode} />
               <Editor
                 key={`editor-${article.id}-${shownVersion}`}
                 articleId={article.id}
                 content={article.content}
-                editable={!readMode}
+                editable={!contentReadOnly}
                 onStatus={setStatus}
               />
-              <ChecklistSection key={`checklists-${article.id}-${shownVersion}`} articleId={article.id} readMode={readMode} />
-              <Backlinks id={article.id} />
-              <History id={article.id} newSince={newSince} />
+              <ChecklistSection
+                key={`checklists-${article.id}-${shownVersion}`}
+                articleId={article.id}
+                readMode={contentReadOnly}
+              />
+              <Backlinks id={id} />
+              <History id={id} newSince={newSince} />
               <p className="meta">
                 Erstellt {formatDate(article.createdAt)} · zuletzt geändert{' '}
                 {formatDate(summary?.lastChangeAt ?? article.updatedAt)}

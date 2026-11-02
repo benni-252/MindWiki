@@ -5,6 +5,7 @@ import { runAction } from './actions'
 import { errorMessage, flushPending, wiki } from './api'
 import { ArticlePanel } from './article/ArticlePanel'
 import { ConfirmDialog } from './dialogs/ConfirmDialog'
+import { ApprovalsDialog } from './dialogs/ApprovalsDialog'
 import { ChangesDialog } from './dialogs/ChangesDialog'
 import { AboutDialog, ShortcutsDialog } from './dialogs/InfoDialogs'
 import { OutagesDialog } from './dialogs/OutagesDialog'
@@ -135,6 +136,7 @@ export function App(): React.JSX.Element {
         {dialog === 'outages' && <OutagesDialog />}
         {dialog === 'changes' && <ChangesDialog />}
         {dialog === 'user-name' && <UserNameDialog />}
+        {dialog === 'approvals' && <ApprovalsDialog />}
         {dialog === 'shortcuts' && <ShortcutsDialog />}
         {dialog === 'about' && <AboutDialog />}
         <ConfirmDialog />
