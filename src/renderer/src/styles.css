@@ -18,7 +18,9 @@
   --success: #2f9e44;
   --success-soft: #e3f6e7;
   --warning: #e67700;
+  --warning-soft: #fff1e0;
   --xref: #9c36b5;
+  --dep: #0c8599;
   --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 4px 16px rgb(16 24 40 / 8%);
   --shadow-lg: 0 8px 40px rgb(16 24 40 / 18%);
   --radius: 8px;
@@ -46,7 +48,9 @@
     --success: #51cf66;
     --success-soft: #1d3324;
     --warning: #ffa94d;
+    --warning-soft: #3a2a16;
     --xref: #da77f2;
+    --dep: #3bc9db;
     --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 4px 16px rgb(0 0 0 / 30%);
     --shadow-lg: 0 8px 40px rgb(0 0 0 / 50%);
     color-scheme: dark;
@@ -1842,4 +1846,298 @@ input.fs-label:focus {
 }
 input.fs-label::-webkit-calendar-picker-indicator {
   display: none !important;
+}
+
+/* ---------- Abhängigkeiten und Störungen ---------- */
+
+.react-flow__edge.dep-edge path {
+  stroke: var(--dep);
+  stroke-width: 1.6;
+  opacity: 0.75;
+}
+.react-flow__edge.dep-edge.impact path {
+  stroke: var(--danger);
+  stroke-width: 2.4;
+  opacity: 1;
+}
+
+.mm-status {
+  flex: none;
+}
+.mm-node.outage {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+.mm-node.outage .mm-status,
+.mm-node.outage .mm-icon {
+  color: var(--danger);
+}
+.mm-node.affected {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+.mm-node.affected .mm-status {
+  color: var(--warning);
+}
+.mm-node.depth-3.outage,
+.mm-node.depth-3.affected {
+  border-width: 1.5px;
+}
+.mm-node.depth-0.outage {
+  background: var(--danger);
+  color: #fff;
+}
+.mm-node.depth-0.outage .mm-status,
+.mm-node.depth-0.outage .mm-icon {
+  color: inherit;
+}
+/* pulsierender Ring um gestörte Knoten (eigenes Element, damit die Auswahl sichtbar bleibt) */
+.mm-node.outage::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 2px solid var(--danger);
+  pointer-events: none;
+  animation: outage-pulse 1.8s ease-out infinite;
+}
+@keyframes outage-pulse {
+  0% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.12, 1.35);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mm-node.outage::after {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+.mm-toggle.hides-outage,
+.mm-toggle.hides-affected {
+  opacity: 1;
+  color: #fff;
+}
+.mm-toggle.hides-outage {
+  border-color: var(--danger);
+  background: var(--danger);
+}
+.mm-toggle.hides-affected {
+  border-color: var(--warning);
+  background: var(--warning);
+}
+
+.outage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.outage-pill:hover {
+  background: color-mix(in srgb, var(--danger) 18%, var(--surface));
+}
+.outage-pill span {
+  font-weight: 500;
+}
+.icon-btn.outage-active,
+.icon-btn.outage-active:hover:not(:disabled) {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.menu > button.menu-ok {
+  color: var(--success);
+}
+.menu > button.menu-ok:hover {
+  background: var(--success-soft);
+}
+
+.status-box {
+  margin: 4px 0 14px;
+  padding: 10px 14px 12px;
+  border: 1px solid;
+  border-radius: 10px;
+}
+.status-box.outage {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+.status-box.affected {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+.status-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.status-box.outage .status-head {
+  color: var(--danger);
+}
+.status-box.affected .status-head {
+  color: var(--warning);
+}
+.status-since {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.status-head .btn {
+  margin-left: auto;
+}
+.status-note {
+  width: 100%;
+  margin-top: 8px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 6px;
+  background: var(--surface);
+  outline: none;
+}
+.status-note:focus {
+  border-color: var(--danger);
+}
+.status-text {
+  margin: 6px 0 0;
+}
+.status-empty {
+  margin: 8px 0 0;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.impact-group {
+  margin-top: 10px;
+}
+.impact-group h4,
+.dep-group h4 {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.impact-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.chain-arrow {
+  color: var(--muted);
+}
+
+.chip.article-chip {
+  padding: 0;
+  overflow: hidden;
+}
+.chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+}
+.chip-x {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  align-self: stretch;
+  margin-left: -6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+}
+.chip-x:hover {
+  color: var(--danger);
+}
+.chip.article-chip.outage {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.chip.article-chip.affected {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+  color: color-mix(in srgb, var(--warning) 70%, var(--text));
+}
+.chip.chip-add {
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.deps {
+  margin: 0 0 18px;
+  padding: 10px 14px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+.dep-group + .dep-group {
+  margin-top: 10px;
+}
+.dep-picker {
+  position: relative;
+  margin-top: 8px;
+}
+.dep-picker input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--surface);
+  outline: none;
+}
+.dep-suggestions {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+}
+
+.outage-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.outage-list li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.outage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.outage-row small {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+}
+.outage-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--danger);
+  font-weight: 650;
+}
+.outage-title:hover {
+  text-decoration: underline;
 }

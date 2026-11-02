@@ -1,9 +1,9 @@
-import { ChevronDown, Keyboard, Link2, Plus, Scan, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, Keyboard, Link2, Plus, Scan, Search, Trash2, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { runAction } from './actions'
 import { useWiki } from './store'
 import { TemplateList } from './TemplateList'
-import { indexTree } from './treeUtils'
+import { impactOf, indexTree } from './treeUtils'
 
 /** Plus-Knopf: neuer Unterartikel zum ausgewählten Artikel, leer oder aus einer Vorlage. */
 function AddMenu(): React.JSX.Element {
@@ -52,6 +52,25 @@ function AddMenu(): React.JSX.Element {
   )
 }
 
+/** Rote Anzeige, solange Störungen gemeldet sind; öffnet die Übersicht. */
+function OutageIndicator(): React.JSX.Element | null {
+  const tree = useWiki((s) => s.tree)
+  if (!tree) return null
+  const impact = impactOf(tree)
+  const outages = impact.outages.size
+  if (outages === 0) return null
+  const affected = impact.affected.size
+  return (
+    <button className="outage-pill" title="Störungen und betroffene Artikel anzeigen" onClick={() => void runAction('outages')}>
+      <TriangleAlert size={15} />
+      <strong>
+        {outages} {outages === 1 ? 'Störung' : 'Störungen'}
+      </strong>
+      {affected > 0 && <span>· {affected} betroffen</span>}
+    </button>
+  )
+}
+
 export function TopBar(): React.JSX.Element {
   const tree = useWiki((s) => s.tree)
   const dbInfo = useWiki((s) => s.dbInfo)
@@ -79,6 +98,8 @@ export function TopBar(): React.JSX.Element {
         <span>Suchen…</span>
         <kbd>Strg+K</kbd>
       </button>
+
+      <OutageIndicator />
 
       <div className="topbar-actions">
         <AddMenu />

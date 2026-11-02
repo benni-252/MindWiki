@@ -72,6 +72,18 @@ export const MIGRATIONS: string[] = [
     position INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX idx_fields_article ON article_fields(article_id, position);
+  `,
+  // v3: Abhängigkeiten zwischen Artikeln und Störungsstatus
+  `
+  ALTER TABLE articles ADD COLUMN outage_since TEXT;
+  ALTER TABLE articles ADD COLUMN outage_note TEXT;
+  CREATE TABLE dependencies (
+    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    depends_on_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    PRIMARY KEY (article_id, depends_on_id),
+    CHECK (article_id <> depends_on_id)
+  ) WITHOUT ROWID;
+  CREATE INDEX idx_dependencies_on ON dependencies(depends_on_id);
   `
 ]
 

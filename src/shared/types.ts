@@ -13,6 +13,10 @@ export interface ArticleSummary {
   hasText: boolean
   checkTotal: number
   checkDone: number
+  /** Beginn einer gemeldeten Störung, null wenn in Betrieb */
+  outageSince: string | null
+  /** Kurze Notiz zur Störung (Ursache, Ticket …) */
+  outageNote: string | null
 }
 
 /** Ein Steckbrief-Feld eines Artikels (z. B. „IP-Adresse“ = „10.0.0.5“). */
@@ -41,10 +45,17 @@ export interface LinkEdge {
   toId: number
 }
 
+/** `articleId` hängt ab von `dependsOnId`: Fällt `dependsOnId` aus, ist `articleId` betroffen. */
+export interface DependencyEdge {
+  articleId: number
+  dependsOnId: number
+}
+
 export interface TreeData {
   rootId: number
   articles: ArticleSummary[]
   links: LinkEdge[]
+  dependencies: DependencyEdge[]
 }
 
 export interface ChecklistItem {
@@ -119,6 +130,12 @@ export interface WikiRpc {
   deleteArticle(id: number): void
   search(query: string): SearchHit[]
 
+  addDependency(articleId: number, dependsOnId: number): void
+  removeDependency(articleId: number, dependsOnId: number): void
+  /** Meldet eine Störung oder ändert ihre Notiz; der Beginn bleibt dabei erhalten. */
+  reportOutage(id: number, note: string | null): void
+  resolveOutage(id: number): void
+
   listTrash(): TrashEntry[]
   restoreArticle(id: number): void
   purgeArticle(id: number): void
@@ -169,6 +186,10 @@ export const RPC_METHODS = [
   'reorderArticle',
   'deleteArticle',
   'search',
+  'addDependency',
+  'removeDependency',
+  'reportOutage',
+  'resolveOutage',
   'listTrash',
   'restoreArticle',
   'purgeArticle',
@@ -213,6 +234,7 @@ export type MenuAction =
   | 'reveal-db'
   | 'search'
   | 'trash'
+  | 'outages'
   | 'toggle-links'
   | 'fit'
   | 'shortcuts'

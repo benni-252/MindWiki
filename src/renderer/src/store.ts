@@ -2,9 +2,9 @@ import { create } from 'zustand'
 import { findTemplate } from '../../shared/templates'
 import type { DbInfo, TreeData } from '../../shared/types'
 import { errorMessage, flushPending, wiki } from './api'
-import { countSubtree, indexTree, pathTo } from './treeUtils'
+import { countSubtree, impactOf, indexTree, pathTo } from './treeUtils'
 
-export type DialogKind = 'search' | 'trash' | 'shortcuts' | 'about' | null
+export type DialogKind = 'search' | 'trash' | 'outages' | 'shortcuts' | 'about' | null
 
 export interface ConfirmOptions {
   title: string
@@ -64,6 +64,11 @@ interface State {
   move(id: number, newParentId: number): Promise<void>
   reorder(id: number, direction: -1 | 1): Promise<void>
   remove(id: number): Promise<void>
+  addDependency(articleId: number, dependsOnId: number): Promise<void>
+  removeDependency(articleId: number, dependsOnId: number): Promise<void>
+  /** Meldet eine Störung (oder ändert die Notiz) und sagt, wie viele Artikel betroffen sind */
+  reportOutage(id: number, note?: string | null): Promise<void>
+  resolveOutage(id: number): Promise<void>
   /** Klappt eingeklappte Vorfahren auf und öffnet den Artikel */
   reveal(id: number): Promise<void>
 }
@@ -262,6 +267,34 @@ export const useWiki = create<State>((set, get) => {
       await mutate(() => wiki.deleteArticle(id))
       set({ selectedId: article.parentId })
       get().toast('In den Papierkorb verschoben – wiederherstellen über Bearbeiten › Papierkorb.')
+    },
+
+    async addDependency(articleId, dependsOnId) {
+      await mutate(() => wiki.addDependency(articleId, dependsOnId))
+    },
+
+    async removeDependency(articleId, dependsOnId) {
+      await mutate(() => wiki.removeDependency(articleId, dependsOnId))
+    },
+
+    async reportOutage(id, note = null) {
+      const wasDown = get().tree?.articles.find((a) => a.id === id)?.outageSince != null
+      const ok = await mutate(async () => {
+        await wiki.reportOutage(id, note)
+        return true
+      })
+      const tree = get().tree
+      if (!ok || wasDown || !tree) return
+      const count = impactOf(tree).byOutage.get(id)?.length ?? 0
+      get().toast(
+        count === 0
+          ? 'Störung gemeldet. Es hängen keine anderen Artikel davon ab.'
+          : `Störung gemeldet – ${count} ${count === 1 ? 'Artikel ist' : 'Artikel sind'} betroffen.`
+      )
+    },
+
+    async resolveOutage(id) {
+      await mutate(() => wiki.resolveOutage(id))
     },
 
     async reveal(id) {
