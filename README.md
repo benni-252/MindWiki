@@ -64,10 +64,11 @@ Falls Electron beim ersten Start fehlt: `node node_modules/electron/install.js`.
 
 Der Workflow `.github/workflows/windows-build.yml` baut Installer und portable .exe auf einem Windows-Rechner von GitHub:
 
-- **Neues Release:** Auf GitHub unter *Releases › Draft a new release* einen Tag wie `v1.1.0` anlegen und veröffentlichen. Nach ein paar Minuten hängen beide .exe-Dateien am Release.
-- **Nur testweise bauen:** *Actions › Windows-Build › Run workflow*. Die .exe-Dateien liegen danach im Lauf unter *Artifacts* als ZIP.
+- **Automatisch bei jeder Änderung auf `master`** (z. B. nach dem Mergen eines Pull Requests): Nach etwa 10 Minuten liegt der neue Stand im Release `v<Version>`. Gibt es das Release für die Version aus `package.json` noch nicht, wird es angelegt – die Beschreibung kommt aus dem passenden Abschnitt in `CHANGELOG.md`. Gibt es das Release schon, werden seine .exe-Dateien ersetzt. Der Download-Link [releases/latest](https://github.com/benni-252/MindWiki/releases/latest) zeigt damit immer den aktuellen Stand.
+- **Pull Requests** werden zur Kontrolle gebaut; die .exe liegt im Lauf unter *Artifacts* als ZIP.
+- **Von Hand:** *Actions › Windows-Build › Run workflow*.
 
-Die Version im Dateinamen kommt aus `version` in `package.json` – vor einem neuen Release dort erhöhen.
+Für eine neue Version `version` in `package.json` erhöhen und in `CHANGELOG.md` einen Abschnitt `## <Version>` ergänzen.
 
 ### Aufbau
 

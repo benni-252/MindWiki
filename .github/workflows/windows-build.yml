@@ -1,18 +1,29 @@
 # Baut die Windows-Programme (Installer + portable .exe) auf GitHub.
 #
-# - Manuell: Reiter "Actions" → "Windows-Build" → "Run workflow".
-#   Die .exe-Dateien liegen danach unten im Lauf unter "Artifacts" als ZIP.
-# - Automatisch: Unter "Releases" ein neues Release veröffentlichen (z. B. Tag v1.0.0).
-#   Die .exe-Dateien werden dann direkt an das Release angehängt.
+# - Jede Änderung auf master: baut die .exe und veröffentlicht sie als Release „v<Version aus package.json>“.
+#   Gibt es dieses Release schon, werden seine .exe-Dateien durch den neuen Stand ersetzt.
+#   https://github.com/benni-252/MindWiki/releases/latest zeigt damit immer den aktuellen Stand.
+#   Die Beschreibung des Releases kommt aus CHANGELOG.md (Abschnitt „## <Version>“).
+# - Pull Requests: bauen zur Kontrolle; die .exe liegt im Lauf unter „Artifacts“.
+# - Manuell: Reiter „Actions“ → „Windows-Build“ → „Run workflow“.
+# - Ein von Hand veröffentlichtes Release bekommt die .exe-Dateien ebenfalls angehängt.
 name: Windows-Build
 
 on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
   workflow_dispatch:
   release:
     types: [published]
 
 permissions:
   contents: write
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -46,6 +57,25 @@ jobs:
             dist/MindWiki-Setup-*.exe
             dist/MindWiki-*-portable.exe
           if-no-files-found: error
+
+      - name: Release für diese Version veröffentlichen
+        if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          files=("dist/MindWiki-Setup-$version.exe" "dist/MindWiki-$version-portable.exe")
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "Release $tag gibt es schon – ersetze die .exe-Dateien durch den aktuellen Stand."
+            gh release upload "$tag" "${files[@]}" --clobber
+          else
+            # Abschnitt „## <Version>“ aus CHANGELOG.md als Beschreibung
+            awk -v v="$version" '$0 == "## " v {found=1; next} /^## / {found=0} found' CHANGELOG.md > notes.md
+            [ -s notes.md ] || echo "MindWiki $version" > notes.md
+            gh release create "$tag" "${files[@]}" --target "$GITHUB_SHA" --title "MindWiki $version" --notes-file notes.md --latest
+          fi
 
       - name: .exe an das Release anhängen
         if: github.event_name == 'release'
