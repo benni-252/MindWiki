@@ -14,6 +14,7 @@ import { SearchDialog } from './dialogs/SearchDialog'
 import { Toasts } from './dialogs/Toasts'
 import { TrashDialog } from './dialogs/TrashDialog'
 import { ChangePasswordDialog } from './dialogs/ChangePasswordDialog'
+import { ProxyLoginDialog } from './dialogs/ProxyLoginDialog'
 import { UpdateDialog } from './dialogs/UpdateDialog'
 import { UsersDialog } from './dialogs/UsersDialog'
 import { LoginScreen } from './LoginScreen'
@@ -118,6 +119,8 @@ export function App(): React.JSX.Element {
           void useWiki.getState().externalChange()
         } else if (event.type === 'update') {
           useWiki.getState().setUpdate(event.state)
+        } else if (event.type === 'proxy-login') {
+          useWiki.getState().setProxyPrompt(event.prompt)
         } else {
           void runAction(event.action)
         }
@@ -157,6 +160,7 @@ export function App(): React.JSX.Element {
     return (
       <>
         <LoginScreen key={`${loginInfo.isSample}-${loginInfo.lastUser}`} />
+        <ProxyLoginDialog />
         <Toasts />
       </>
     )
@@ -207,6 +211,7 @@ export function App(): React.JSX.Element {
         {dialog === 'shortcuts' && <ShortcutsDialog />}
         {dialog === 'about' && <AboutDialog />}
         <ConfirmDialog />
+        <ProxyLoginDialog />
         <Toasts />
       </div>
     </ReactFlowProvider>

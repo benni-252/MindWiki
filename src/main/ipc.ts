@@ -6,7 +6,18 @@ import { backupTo, NotAWikiError } from './db'
 import { articleToHtml } from './exportHtml'
 import { renderPdf } from './pdf'
 import { ensureSampleWiki } from './sample'
-import { checkForUpdates, downloadUpdate, getUpdateState, installUpdate, openReleasePage } from './updater'
+import {
+  answerProxyLogin,
+  cancelProxyLogin,
+  checkForUpdates,
+  downloadUpdate,
+  forgetProxyLogins,
+  getProxyPrompt,
+  getSavedProxyLogins,
+  getUpdateState,
+  installUpdate,
+  openReleasePage
+} from './updater'
 import { defaultDbPath, loadSettings, sampleDbPath, saveSettings } from './settings'
 import { WikiError, type WikiStore } from './store'
 import { currentDbFile, currentSession, currentStore, openWiki, setSession, wikiName } from './wiki'
@@ -20,6 +31,11 @@ type FileOps =
   | 'downloadUpdate'
   | 'installUpdate'
   | 'openReleasePage'
+  | 'answerProxyLogin'
+  | 'cancelProxyLogin'
+  | 'getProxyPrompt'
+  | 'getSavedProxyLogins'
+  | 'forgetProxyLogins'
   | 'newDb'
   | 'openDb'
   | 'backupDb'
@@ -51,7 +67,12 @@ const PUBLIC = new Set<string>([
   'checkForUpdates',
   'downloadUpdate',
   'installUpdate',
-  'openReleasePage'
+  'openReleasePage',
+  'answerProxyLogin',
+  'cancelProxyLogin',
+  'getProxyPrompt',
+  'getSavedProxyLogins',
+  'forgetProxyLogins'
 ])
 
 /** Mindestrolle je Aktion; alles andere dürfen alle angemeldeten Benutzer (Mitarbeiter). */
@@ -144,6 +165,11 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
     downloadUpdate,
     installUpdate,
     openReleasePage,
+    answerProxyLogin,
+    cancelProxyLogin,
+    getProxyPrompt,
+    getSavedProxyLogins,
+    forgetProxyLogins,
 
     openSampleDb: async () => {
       const win = getWindow()

@@ -6,6 +6,8 @@ interface Settings {
   lastDbPath?: string
   /** Zuletzt angemeldeter Benutzer (zum Vorausfüllen der Anmeldung) */
   lastUser?: string
+  /** Gemerkte Proxy-Anmeldungen je „host:port“; Passwort verschlüsselt (safeStorage, Base64) */
+  proxyLogins?: Record<string, { username: string; password: string }>
 }
 
 const file = (): string => path.join(app.getPath('userData'), 'settings.json')

@@ -210,6 +210,22 @@ export interface UpdateState {
   message?: string
 }
 
+/** Abfrage von Benutzername und Passwort für einen Firmen-Proxy (bei der Update-Prüfung). */
+export interface ProxyPrompt {
+  /** Proxy-Server als „host:port“ */
+  host: string
+  /** Bereich, den der Proxy nennt (oft leer) */
+  realm: string
+  /** Vorschlag (zuletzt benutzt oder gespeichert) */
+  username: string
+  /** true: Der Proxy hat die letzte Eingabe abgelehnt */
+  failed: boolean
+  /** Merken möglich (Verschlüsselung für das Windows-Konto verfügbar) */
+  canRemember: boolean
+  /** Zählt die Abfragen – jede neue setzt das Formular zurück */
+  attempt: number
+}
+
 export interface SaveResult {
   /** true, wenn sich Querverweise oder die Text-Markierung geändert haben (Mind Map neu laden) */
   treeChanged: boolean
@@ -307,6 +323,13 @@ export interface WikiRpc {
   downloadUpdate(): Promise<void>
   installUpdate(): void
   openReleasePage(): void
+  /** Antwort auf die Proxy-Abfrage */
+  answerProxyLogin(username: string, password: string, remember: boolean): void
+  cancelProxyLogin(): void
+  getProxyPrompt(): ProxyPrompt | null
+  /** Proxys mit gespeicherter Anmeldung („host:port“) */
+  getSavedProxyLogins(): string[]
+  forgetProxyLogins(): void
   backupDb(): Promise<string | null>
   revealDb(): void
   confirmClose(): void
@@ -384,6 +407,11 @@ export const RPC_METHODS = [
   'downloadUpdate',
   'installUpdate',
   'openReleasePage',
+  'answerProxyLogin',
+  'cancelProxyLogin',
+  'getProxyPrompt',
+  'getSavedProxyLogins',
+  'forgetProxyLogins',
   'backupDb',
   'revealDb',
   'confirmClose'
@@ -421,6 +449,8 @@ export type WikiEvent =
   /** Jemand anderes hat die geöffnete Wiki-Datei geändert */
   | { type: 'external-change' }
   | { type: 'update'; state: UpdateState }
+  /** Proxy verlangt eine Anmeldung (null: Abfrage schließen) */
+  | { type: 'proxy-login'; prompt: ProxyPrompt | null }
 
 type Promisify<T> = {
   [K in keyof T]: T[K] extends (...args: infer A) => infer R ? (...args: A) => Promise<Awaited<R>> : never

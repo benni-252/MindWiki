@@ -2,6 +2,20 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.6.0
+
+**Neu: Updates hinter einem Firmen-Proxy**
+- Verlangt der Proxy-Server Benutzername und Passwort, fragt MindWiki jetzt danach, statt bei „Suche nach einer neuen Version …“ hängen zu bleiben.
+- Auf Wunsch merkt sich MindWiki die Anmeldung – verschlüsselt für dein Windows-Konto. Löschen lässt sie sich unter *Hilfe › Nach Updates suchen…*.
+- Ein falsches Passwort wird erkannt und erneut abgefragt. Wer abbricht, wird erst bei der nächsten Suche von Hand wieder gefragt.
+- Verständliche Meldungen, wenn der Proxy GitHub sperrt, nicht erreichbar ist oder Verbindungen prüft – mit Knopf zur Download-Seite.
+
+**Download**
+- `MindWiki-Setup-1.6.0.exe` – Installer (mit automatischen Updates)
+- `MindWiki-1.6.0-portable.exe` – ohne Installation starten
+
+Hängt die Update-Suche bei dir hinter einem Proxy, installiere diese Version einmal von Hand (Download im Browser) – ab dann klappen Updates auch dort.
+
 ## 1.5.0
 
 **Neu: Artikel als PDF exportieren**

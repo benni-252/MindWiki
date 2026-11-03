@@ -234,6 +234,12 @@ if (!app.requestSingleInstanceLock()) {
       () => {
         // Zum Installieren beenden, ohne auf die Oberfläche zu warten (die hat vorher gespeichert)
         closeAllowed = true
+      },
+      (prompt) => {
+        // Ohne Fenster kann niemand antworten – dann wird die Anmeldung abgebrochen
+        if (!win || win.isDestroyed()) return false
+        send({ type: 'proxy-login', prompt })
+        return true
       }
     )
 
