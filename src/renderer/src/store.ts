@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { findTemplate } from '../../shared/templates'
-import type { DbInfo, LoginInfo, Role, Session, TreeData, UpdateState } from '../../shared/types'
+import type { DbInfo, LoginInfo, ProxyPrompt, Role, Session, TreeData, UpdateState } from '../../shared/types'
 import { errorMessage, flushPending, hasPending, wiki } from './api'
 import { countSubtree, impactOf, indexTree, pathTo, visibleContentId, type SeenState } from './treeUtils'
 
@@ -56,6 +56,8 @@ interface State {
   seen: SeenState | null
   /** Neue Version auf GitHub? */
   update: UpdateState
+  /** Firmen-Proxy fragt nach Benutzername und Passwort */
+  proxyPrompt: ProxyPrompt | null
   /** Angemeldeter Benutzer; null → Anmeldemaske */
   session: Session | null
   loginInfo: LoginInfo | null
@@ -108,6 +110,7 @@ interface State {
   reject(id: number, reason: string | null): Promise<void>
   setApprovalRequired(on: boolean): Promise<void>
   setUpdate(update: UpdateState): void
+  setProxyPrompt(prompt: ProxyPrompt | null): void
   /** Artikel als PDF speichern (Speichern-Dialog im Hauptprozess) */
   exportPdf(id: number): Promise<void>
 }
@@ -234,17 +237,24 @@ export const useWiki = create<State>((set, get) => {
     session: null,
     loginInfo: null,
     update: { status: 'idle', current: __APP_VERSION__ },
+    proxyPrompt: null,
 
     async loadAll() {
-      const [dbInfo, loginInfo, update] = await Promise.all([wiki.getDbInfo(), wiki.getLoginInfo(), wiki.getUpdateState()])
+      const [dbInfo, loginInfo, update, proxyPrompt] = await Promise.all([
+        wiki.getDbInfo(),
+        wiki.getLoginInfo(),
+        wiki.getUpdateState(),
+        wiki.getProxyPrompt()
+      ])
       if (!loginInfo.session) {
-        set({ dbInfo, loginInfo, update, session: null, tree: null, dialog: null, panelOpen: false, userName: '' })
+        set({ dbInfo, loginInfo, update, proxyPrompt, session: null, tree: null, dialog: null, panelOpen: false, userName: '' })
         return
       }
       const tree = await wiki.getTree()
       const userName = loginInfo.session.username
       set({
         update,
+        proxyPrompt,
         tree,
         dbInfo,
         loginInfo,
@@ -478,6 +488,7 @@ export const useWiki = create<State>((set, get) => {
     },
 
     setUpdate: (update) => set({ update }),
+    setProxyPrompt: (proxyPrompt) => set({ proxyPrompt }),
 
     async exportPdf(id) {
       const { tree, userName } = get()

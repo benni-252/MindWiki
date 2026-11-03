@@ -1,5 +1,5 @@
-import { Download, ExternalLink, RefreshCw } from 'lucide-react'
-import { useCallback } from 'react'
+import { Download, ExternalLink, KeyRound, RefreshCw } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
 import { errorMessage, flushPending, wiki } from '../api'
 import { useWiki } from '../store'
 import { Modal } from './Modal'
@@ -9,6 +9,31 @@ export function UpdateDialog(): React.JSX.Element {
   const update = useWiki((s) => s.update)
   const close = useCallback(() => useWiki.getState().setDialog(null), [])
   const fail = (err: unknown): void => useWiki.getState().toast(errorMessage(err), 'error')
+  const proxyPrompt = useWiki((s) => s.proxyPrompt)
+  const [savedProxies, setSavedProxies] = useState<string[]>([])
+
+  // Gemerkte Proxy-Anmeldungen (neu lesen, sobald eine Abfrage beantwortet wurde)
+  useEffect(() => {
+    if (proxyPrompt) return
+    let active = true
+    wiki
+      .getSavedProxyLogins()
+      .then((hosts) => active && setSavedProxies(hosts))
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [proxyPrompt, update.status])
+
+  const forgetProxies = async (): Promise<void> => {
+    try {
+      await wiki.forgetProxyLogins()
+      setSavedProxies([])
+      useWiki.getState().toast('Gespeicherte Proxy-Anmeldung gelöscht.')
+    } catch (err) {
+      fail(err)
+    }
+  }
 
   const download = (): void => void wiki.downloadUpdate().catch(fail)
   const install = async (): Promise<void> => {
@@ -91,6 +116,15 @@ export function UpdateDialog(): React.JSX.Element {
       )}
       {(update.status === 'available' || update.status === 'ready') && (
         <p className="muted small">Benutzt ihr eine gemeinsame Wiki-Datei, sollten alle auf die neue Version wechseln.</p>
+      )}
+      {savedProxies.length > 0 && (
+        <p className="muted small proxy-saved">
+          <KeyRound size={14} />
+          <span>Anmeldung für den Proxy {savedProxies.join(', ')} ist gespeichert.</span>
+          <button className="link-btn" onClick={() => void forgetProxies()}>
+            Löschen
+          </button>
+        </p>
       )}
     </Modal>
   )
