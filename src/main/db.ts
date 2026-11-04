@@ -121,6 +121,27 @@ export const MIGRATIONS: string[] = [
     created_at TEXT NOT NULL DEFAULT (${NOW}),
     deleted_at TEXT
   );
+  `,
+  // v7: Anhänge (Dokumente) an Artikeln. Der Inhalt liegt getrennt, damit Entwürfe ihn ohne Kopie teilen.
+  `
+  CREATE TABLE files (
+    id INTEGER PRIMARY KEY,
+    data BLOB NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (${NOW})
+  );
+  CREATE TABLE attachments (
+    id INTEGER PRIMARY KEY,
+    article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    file_id INTEGER NOT NULL REFERENCES files(id),
+    name TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    added_by TEXT,
+    added_at TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX idx_attachments_article ON attachments(article_id, position);
+  CREATE INDEX idx_attachments_file ON attachments(file_id);
   `
 ]
 

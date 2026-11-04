@@ -13,6 +13,8 @@ export interface ArticleSummary {
   hasText: boolean
   checkTotal: number
   checkDone: number
+  /** Zahl der Anhänge (im eigenen Entwurf: die des Entwurfs) */
+  attachmentCount: number
   /** Beginn einer gemeldeten Störung, null wenn in Betrieb */
   outageSince: string | null
   /** Kurze Notiz zur Störung (Ursache, Ticket …) */
@@ -83,7 +85,27 @@ export interface DraftDiff {
   iconChanged: boolean
   fields: { label: string; before: string | null; after: string | null }[]
   checklists: { title: string; change: 'added' | 'removed' | 'changed'; detail: string[] }[]
+  attachments: { name: string; change: 'added' | 'removed' }[]
   text: { before: string; after: string } | null
+}
+
+/** Ein angehängtes Dokument (der Inhalt liegt in der Wiki-Datei). */
+export interface Attachment {
+  id: number
+  articleId: number
+  name: string
+  mime: string
+  /** Größe in Byte */
+  size: number
+  addedBy: string | null
+  addedAt: string
+}
+
+/** Ergebnis beim Anhängen mehrerer Dateien über den Datei-Dialog */
+export interface AttachResult {
+  added: number
+  /** Nicht angehängte Dateien mit Grund */
+  skipped: string[]
 }
 
 export interface ChecklistItem {
@@ -129,6 +151,7 @@ export type ChangeKind =
   | 'move'
   | 'trash'
   | 'approval'
+  | 'attachment'
 
 /** Ein Eintrag im Verlauf eines Artikels: wer hat wann was geändert. */
 export interface ChangeEntry {
@@ -331,6 +354,16 @@ export interface WikiRpc {
   openDb(): Promise<boolean>
   /** Beispiel-Wiki öffnen (beim ersten Mal anlegen) */
   openSampleDb(): Promise<boolean>
+  getAttachments(articleId: number): Attachment[]
+  /** Datei anhängen (Ziehen und Ablegen); liefert die Nummer des Anhangs */
+  addAttachment(articleId: number, name: string, data: Uint8Array): number
+  /** Datei-Dialog zum Anhängen (mehrere Dateien möglich) */
+  addAttachmentFiles(articleId: number): Promise<AttachResult>
+  deleteAttachment(id: number): void
+  /** Öffnet eine schreibgeschützte Kopie mit dem passenden Programm */
+  openAttachment(id: number): Promise<void>
+  /** Speichert eine Kopie; liefert den Pfad oder null (abgebrochen) */
+  saveAttachmentAs(id: number): Promise<string | null>
   /** Artikel als PDF speichern; liefert den Pfad oder null (abgebrochen) */
   exportPdf(id: number): Promise<string | null>
   getUpdateState(): UpdateState
@@ -423,6 +456,12 @@ export const RPC_METHODS = [
   'openDb',
   'openSampleDb',
   'exportPdf',
+  'getAttachments',
+  'addAttachment',
+  'addAttachmentFiles',
+  'deleteAttachment',
+  'openAttachment',
+  'saveAttachmentAs',
   'getUpdateState',
   'checkForUpdates',
   'downloadUpdate',

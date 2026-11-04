@@ -34,6 +34,8 @@ export interface ExportArticle {
   checklists: ExportChecklist[]
   dependsOn: string[]
   neededBy: string[]
+  /** Angehängte Dokumente (nur Name und Größe – der Inhalt bleibt im Wiki) */
+  attachments: { name: string; size: string }[]
   /** Hinweise oben im Dokument, z. B. Entwurf oder Störung */
   notes: { kind: 'warning' | 'danger' | 'info'; text: string }[]
   meta: string
@@ -200,6 +202,7 @@ const STYLE = `
   .deps { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
   .deps h3 { font-size: 10pt; color: #4b5565; margin: 0 0 1mm; }
   .muted { color: #7a8494; }
+  .small-note { font-size: 8.5pt; }
 `
 
 /** Vollständige HTML-Seite für den PDF-Druck. */
@@ -226,6 +229,11 @@ export function articleToHtml(article: ExportArticle, ctx: RenderContext): strin
       const run = list.lastRun ? `<div class="run">Zuletzt durchgeführt: ${e(list.lastRun)}</div>` : ''
       parts.push(`<div class="checklist"><h3>${e(list.title)}</h3><ol>${steps}</ol>${run}</div>`)
     }
+  }
+
+  if (article.attachments.length > 0) {
+    const items = article.attachments.map((x) => `<li>${e(x.name)} <span class="muted">(${e(x.size)})</span></li>`).join('')
+    parts.push(`<h2>Anhänge</h2><ul class="attachments">${items}</ul><p class="muted small-note">Die Dateien liegen im Wiki.</p>`)
   }
 
   if (article.dependsOn.length > 0 || article.neededBy.length > 0) {

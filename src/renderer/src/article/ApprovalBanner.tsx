@@ -62,7 +62,13 @@ export function DiffDialog({ id, canDecide, onClose }: { id: number; canDecide: 
     void useWiki.getState().approve(id)
   }
   const empty =
-    !!diff && !diff.title && !diff.iconChanged && !diff.text && diff.fields.length === 0 && diff.checklists.length === 0
+    !!diff &&
+    !diff.title &&
+    !diff.iconChanged &&
+    !diff.text &&
+    diff.fields.length === 0 &&
+    diff.checklists.length === 0 &&
+    diff.attachments.length === 0
 
   return (
     <>
@@ -140,6 +146,16 @@ export function DiffDialog({ id, canDecide, onClose }: { id: number; canDecide: 
                         {line}
                       </div>
                     ))}
+                  </div>
+                ))}
+              </div>
+            )}
+            {diff.attachments.length > 0 && (
+              <div className="diff-block">
+                <h4>Anhänge</h4>
+                {diff.attachments.map((a, i) => (
+                  <div key={`${a.name}-${i}`} className={`diff-line ${a.change}`}>
+                    {a.change === 'added' ? '+' : '−'} {a.name}
                   </div>
                 ))}
               </div>

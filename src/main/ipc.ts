@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
+import { cleanAttachmentName, formatBytes, isBlockedAttachment, MAX_ATTACHMENT_BYTES } from '../shared/attachments'
 import { RPC_METHODS, type Role, type WikiRpc } from '../shared/types'
 import { backupTo, NotAWikiError } from './db'
 import { friendlyDbError } from './dbErrors'
@@ -28,6 +29,9 @@ type FileOps =
   | 'getDbInfo'
   | 'openSampleDb'
   | 'exportPdf'
+  | 'addAttachmentFiles'
+  | 'openAttachment'
+  | 'saveAttachmentAs'
   | 'getUpdateState'
   | 'checkForUpdates'
   | 'downloadUpdate'
@@ -142,6 +146,26 @@ export function tryOpen(win: BrowserWindow | null, file: string): boolean {
   }
 }
 
+/** Geöffnete Anhänge: schreibgeschützte Kopien im Temp-Ordner (je Öffnen ein eigener Ordner). */
+const ATTACHMENT_TEMP = (): string => path.join(app.getPath('temp'), 'MindWiki-Anhaenge')
+
+/** Alte geöffnete Kopien (älter als einen Tag) wegräumen – was noch offen ist, bleibt liegen. */
+function cleanupOpenedAttachments(): void {
+  const root = ATTACHMENT_TEMP()
+  if (!fs.existsSync(root)) return
+  const cutoff = Date.now() - 24 * 60 * 60_000
+  for (const entry of fs.readdirSync(root)) {
+    const dir = path.join(root, entry)
+    try {
+      if (fs.statSync(dir).mtimeMs > cutoff) continue
+      for (const f of fs.readdirSync(dir)) fs.chmodSync(path.join(dir, f), 0o644)
+      fs.rmSync(dir, { recursive: true, force: true })
+    } catch {
+      // noch in Benutzung – beim nächsten Mal
+    }
+  }
+}
+
 /** Nicht gespeicherte Texte: im Benutzerordner dieses Rechners, je Wiki-Datei und Benutzer. */
 function unsavedStore(): { store: UnsavedStore; db: string; user: string } {
   const session = currentSession()
@@ -183,6 +207,69 @@ export function registerIpc(
         }
       })
       fs.writeFileSync(result.filePath, await renderPdf(html))
+      return result.filePath
+    },
+
+    addAttachmentFiles: async (articleId) => {
+      const win = getWindow()
+      const options = {
+        title: 'Datei anhängen',
+        buttonLabel: 'Anhängen',
+        properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>
+      }
+      const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+      const skipped: string[] = []
+      let added = 0
+      if (result.canceled) return { added, skipped }
+      const store = currentStore()
+      for (const file of result.filePaths) {
+        const name = path.basename(file)
+        try {
+          // Größe vorher prüfen, damit riesige Dateien gar nicht erst gelesen werden
+          const size = fs.statSync(file).size
+          if (size > MAX_ATTACHMENT_BYTES) {
+            skipped.push(`„${name}“ ist zu groß (${formatBytes(size)}) – höchstens ${formatBytes(MAX_ATTACHMENT_BYTES)} pro Datei.`)
+            continue
+          }
+          store.addAttachment(articleId, name, fs.readFileSync(file))
+          added++
+        } catch (err) {
+          const friendly = friendlyDbError(err)
+          const message = friendly instanceof Error ? friendly.message : String(friendly)
+          skipped.push(friendly instanceof WikiError ? message : `„${name}“ konnte nicht gelesen werden: ${message}`)
+        }
+      }
+      return { added, skipped }
+    },
+
+    openAttachment: async (id) => {
+      const file = currentStore().getAttachmentFile(id)
+      if (!file) throw new WikiError('Diesen Anhang gibt es nicht mehr.')
+      if (isBlockedAttachment(file.name)) {
+        throw new WikiError('Aus Sicherheitsgründen öffnet MindWiki Programme und Skripte nicht.')
+      }
+      cleanupOpenedAttachments()
+      const dir = path.join(ATTACHMENT_TEMP(), `${id}-${Date.now()}`)
+      fs.mkdirSync(dir, { recursive: true })
+      const target = path.join(dir, cleanAttachmentName(file.name))
+      fs.writeFileSync(target, file.data)
+      // Schreibgeschützt: Änderungen an der Kopie würden nicht ins Wiki zurückfließen
+      fs.chmodSync(target, 0o444)
+      const error = await shell.openPath(target)
+      if (error) throw new WikiError(`Der Anhang konnte nicht geöffnet werden: ${error}`)
+    },
+
+    saveAttachmentAs: async (id) => {
+      const file = currentStore().getAttachmentFile(id)
+      if (!file) throw new WikiError('Diesen Anhang gibt es nicht mehr.')
+      const win = getWindow()
+      const options = {
+        title: 'Anhang speichern',
+        defaultPath: path.join(app.getPath('documents'), cleanAttachmentName(file.name))
+      }
+      const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+      if (result.canceled || !result.filePath) return null
+      fs.writeFileSync(result.filePath, file.data)
       return result.filePath
     },
 

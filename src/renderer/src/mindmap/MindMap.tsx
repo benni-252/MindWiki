@@ -110,6 +110,7 @@ export function MindMap(): React.JSX.Element {
       return (
         estimateWidth(a, depth) +
         (summary && summary.checkTotal > 0 ? 54 : 0) +
+        (summary && summary.attachmentCount > 0 ? 40 : 0) +
         (summary?.hasText ? 12 : 0) +
         (summary?.icon ? 22 : 0) +
         (impactStatus(impact, a.id) ? 20 : 0)
