@@ -139,6 +139,25 @@ describe('Verlauf', () => {
     expect(summary().lastOtherChangeAt).toBe(summary().lastChangeAt)
   })
 
+  it('nimmt bei Änderungen in derselben Millisekunde die später eingetragene', () => {
+    // Auf schnellen Rechnern bekommen Anlegen und Umbenennen oft denselben Zeitstempel
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-04T08:00:00.000Z'))
+    try {
+      const a = store.createArticle(root, 'A')
+      store.author = 'Ben'
+      store.renameArticle(a, 'B')
+      store.author = 'Carla'
+      store.renameArticle(a, 'C')
+      store.author = 'Anna'
+      const summary = store.getTree().articles.find((x) => x.id === a)!
+      expect(summary).toMatchObject({ lastChangeBy: 'Carla', lastOtherChangeBy: 'Carla' })
+      expect(store.getChanges(a)[0].author).toBe('Carla')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('listet die letzten Änderungen im ganzen Wiki, auch im Papierkorb', () => {
     const a = store.createArticle(root, 'Alt')
     store.createArticle(root, 'Neu')
