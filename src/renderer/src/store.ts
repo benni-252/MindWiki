@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { findTemplate } from '../../shared/templates'
-import type { DbInfo, LoginInfo, ProxyPrompt, Role, Session, TreeData, UpdateState } from '../../shared/types'
-import { errorMessage, flushPending, hasPending, wiki } from './api'
+import type { DbInfo, LoginInfo, ProxyPrompt, Role, Session, TreeData, UnsavedText, UpdateState } from '../../shared/types'
+import { errorMessage, flushPending, hasFailed, hasPending, saveAll, wiki } from './api'
 import { countSubtree, impactOf, indexTree, pathTo, visibleContentId, type SeenState } from './treeUtils'
 
 export type DialogKind =
@@ -61,12 +61,22 @@ interface State {
   /** Angemeldeter Benutzer; null → Anmeldemaske */
   session: Session | null
   loginInfo: LoginInfo | null
+  /** Texte, die nicht gespeichert werden konnten und auf diesem Rechner aufgehoben sind */
+  unsaved: UnsavedText[]
 
   loadAll(): Promise<void>
   loadTree(): Promise<void>
   select(id: number | null, center?: CenterMode): void
   openArticle(id: number, center?: CenterMode): void
   closePanel(): void
+  /** Alles Offene sofort speichern (Knopf, Strg+S) */
+  saveNow(): Promise<void>
+  /**
+   * Vor dem Schließen, Beenden oder Wechseln: speichern; klappt das nicht, nachfragen.
+   * true = weitermachen.
+   */
+  confirmLeave(kind: 'article' | 'app' | 'wiki'): Promise<boolean>
+  refreshUnsaved(): void
   setPanelMax(max: boolean): void
   setReadMode(read: boolean): void
   toggleLinks(): void
@@ -238,6 +248,7 @@ export const useWiki = create<State>((set, get) => {
     loginInfo: null,
     update: { status: 'idle', current: __APP_VERSION__ },
     proxyPrompt: null,
+    unsaved: [],
 
     async loadAll() {
       const [dbInfo, loginInfo, update, proxyPrompt] = await Promise.all([
@@ -267,6 +278,7 @@ export const useWiki = create<State>((set, get) => {
         renamingId: null,
         fitNonce: get().fitNonce + 1
       })
+      get().refreshUnsaved()
     },
 
     async loadTree() {
@@ -277,18 +289,81 @@ export const useWiki = create<State>((set, get) => {
     },
 
     select(id, center = false) {
-      set({
-        selectedId: id,
-        ...(center && id != null ? { centerRequest: { id, nonce: ++nonce, flash: center === 'flash' } } : {})
-      })
+      const apply = (): void =>
+        set({
+          selectedId: id,
+          ...(center && id != null ? { centerRequest: { id, nonce: ++nonce, flash: center === 'flash' } } : {})
+        })
+      // Text des offenen Artikels konnte nicht gespeichert werden: erst nachfragen
+      const { panelOpen, selectedId } = get()
+      if (panelOpen && id !== selectedId && hasFailed()) {
+        void get()
+          .confirmLeave('article')
+          .then((ok) => ok && apply())
+        return
+      }
+      apply()
     },
 
     openArticle(id, center = false) {
+      const { panelOpen, selectedId } = get()
+      if (panelOpen && id !== selectedId && hasFailed()) {
+        void get()
+          .confirmLeave('article')
+          .then((ok) => {
+            if (!ok) return
+            set({ selectedId: id, panelOpen: true })
+            if (center) set({ centerRequest: { id, nonce: ++nonce, flash: center === 'flash' } })
+          })
+        return
+      }
       get().select(id, center)
       set({ panelOpen: true })
     },
 
-    closePanel: () => set({ panelOpen: false, panelMax: false }),
+    closePanel() {
+      const apply = (): void => set({ panelOpen: false, panelMax: false })
+      if (hasFailed()) {
+        void get()
+          .confirmLeave('article')
+          .then((ok) => ok && apply())
+        return
+      }
+      apply()
+    },
+
+    async saveNow() {
+      // Steht der Cursor in einem Feld (Titel, Steckbrief), dessen Wert erst beim Verlassen gespeichert wird
+      const active = document.activeElement
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) active.blur()
+      if (await saveAll()) get().toast('Gespeichert.')
+      else {
+        get().toast(
+          'Nicht gespeichert – die Wiki-Datei ist gerade nicht erreichbar. Dein Text ist auf diesem Rechner aufgehoben, MindWiki versucht es weiter.',
+          'error'
+        )
+      }
+    },
+
+    async confirmLeave(kind) {
+      if (await saveAll()) return true
+      const when =
+        kind === 'app' ? 'beim nächsten Start' : kind === 'wiki' ? 'beim nächsten Öffnen dieses Wikis' : 'beim nächsten Öffnen des Artikels'
+      return get().confirm({
+        title: kind === 'app' ? 'MindWiki trotzdem beenden?' : 'Text nicht gespeichert',
+        message: `Ein Artikeltext konnte nicht gespeichert werden – die Wiki-Datei ist gerade nicht erreichbar. Er ist auf diesem Rechner aufgehoben und lässt sich ${when} wiederherstellen.`,
+        confirmLabel: kind === 'app' ? 'Trotzdem beenden' : kind === 'wiki' ? 'Trotzdem fortfahren' : 'Trotzdem schließen',
+        danger: true
+      })
+    },
+
+    refreshUnsaved() {
+      if (!get().session) return
+      wiki
+        .listUnsaved()
+        .then((unsaved) => set({ unsaved }))
+        .catch(() => undefined)
+    },
     setPanelMax: (panelMax) => set({ panelMax }),
 
     setReadMode(readMode) {
@@ -473,7 +548,7 @@ export const useWiki = create<State>((set, get) => {
     },
 
     async logout() {
-      await flushPending()
+      if (!(await get().confirmLeave('wiki'))) return
       await wiki.logout()
       await get().loadAll()
     },

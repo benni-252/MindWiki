@@ -126,7 +126,8 @@ export const MIGRATIONS: string[] = [
 
 export class NotAWikiError extends Error {}
 
-export const BUSY_TIMEOUT_MS = 10_000
+/** Wartezeit bei gesperrter Datei; MINDWIKI_BUSY_TIMEOUT_MS verkürzt sie in automatischen Tests. */
+export const BUSY_TIMEOUT_MS = Number(process.env.MINDWIKI_BUSY_TIMEOUT_MS) || 10_000
 
 /**
  * Normales Rollback-Journal statt WAL: WAL funktioniert nicht, wenn mehrere Rechner dieselbe

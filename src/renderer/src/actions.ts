@@ -10,7 +10,7 @@ export async function runAction(action: MenuAction): Promise<void> {
       case 'new-db':
       case 'open-db':
       case 'sample-db': {
-        await flushPending()
+        if (!(await s.confirmLeave('wiki'))) break
         const switched =
           action === 'new-db' ? await wiki.newDb() : action === 'open-db' ? await wiki.openDb() : await wiki.openSampleDb()
         if (switched) {
@@ -47,6 +47,9 @@ export async function runAction(action: MenuAction): Promise<void> {
       case 'users':
         if (s.can('admin')) s.setDialog('users')
         else if (s.session) s.toast('Nur der Admin kann Benutzer verwalten.', 'error')
+        break
+      case 'save':
+        if (s.session) await s.saveNow()
         break
       case 'export-pdf':
         if (s.session && s.tree) await s.exportPdf(s.selectedId ?? s.tree.rootId)

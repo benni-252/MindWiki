@@ -2,6 +2,21 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.7.0
+
+**Neu: Nichts geht verloren, wenn die Wiki-Datei nicht erreichbar ist**
+- Bisher ging Text verloren, wenn das Speichern scheiterte (z. B. Netzlaufwerk getrennt) und man den Artikel oder MindWiki schloss. Jetzt bleibt der Text im Artikel stehen, wird zusätzlich auf diesem Rechner aufgehoben, und MindWiki speichert von selbst, sobald die Datei wieder erreichbar ist.
+- Wer einen nicht gespeicherten Artikel schließen, einen anderen öffnen oder MindWiki beenden will, wird gefragt.
+- Aufgehobene Texte zeigt MindWiki beim nächsten Öffnen an: *Wiederherstellen*, *Text kopieren* oder *Verwerfen*.
+- Verständliche Meldungen statt „database is locked“ – z. B. „Die Wiki-Datei ist gerade gesperrt oder nicht erreichbar“.
+
+**Neu: Speichern von Hand**
+- Knopf oben im Artikel und Strg+S (*Datei › Speichern*). Automatisch gespeichert wird weiterhin.
+
+**Download**
+- `MindWiki-Setup-1.7.0.exe` – Installer (mit automatischen Updates)
+- `MindWiki-1.7.0-portable.exe` – ohne Installation starten
+
 ## 1.6.0
 
 **Neu: Updates hinter einem Firmen-Proxy**

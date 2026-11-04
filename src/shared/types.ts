@@ -210,6 +210,21 @@ export interface UpdateState {
   message?: string
 }
 
+/** Artikeltext, der nicht gespeichert werden konnte – auf diesem Rechner aufgehoben. */
+export interface UnsavedText {
+  /** Artikel, wie er in der Mind Map heißt (zum Öffnen) */
+  articleId: number
+  /** Wohin der Text gespeichert werden sollte (Artikel oder eigener Entwurf) */
+  contentId: number
+  title: string
+  /** Text als Editor-JSON */
+  content: string
+  /** Reiner Text (zum Kopieren) */
+  text: string
+  /** Zeitpunkt (ISO) */
+  at: string
+}
+
 /** Abfrage von Benutzername und Passwort für einen Firmen-Proxy (bei der Update-Prüfung). */
 export interface ProxyPrompt {
   /** Proxy-Server als „host:port“ */
@@ -330,6 +345,12 @@ export interface WikiRpc {
   /** Proxys mit gespeicherter Anmeldung („host:port“) */
   getSavedProxyLogins(): string[]
   forgetProxyLogins(): void
+  /** Nicht gespeicherten Text auf diesem Rechner aufheben bzw. wieder entfernen */
+  keepUnsaved(text: Omit<UnsavedText, 'at'>): void
+  dropUnsaved(contentId: number): void
+  listUnsaved(): UnsavedText[]
+  /** Die Oberfläche fragt vor dem Beenden noch nach – nicht nach 3 Sekunden zwangsweise schließen */
+  holdClose(): void
   backupDb(): Promise<string | null>
   revealDb(): void
   confirmClose(): void
@@ -412,6 +433,10 @@ export const RPC_METHODS = [
   'getProxyPrompt',
   'getSavedProxyLogins',
   'forgetProxyLogins',
+  'keepUnsaved',
+  'dropUnsaved',
+  'listUnsaved',
+  'holdClose',
   'backupDb',
   'revealDb',
   'confirmClose'
@@ -438,6 +463,7 @@ export type MenuAction =
   | 'sample-db'
   | 'check-updates'
   | 'export-pdf'
+  | 'save'
   | 'toggle-links'
   | 'fit'
   | 'shortcuts'

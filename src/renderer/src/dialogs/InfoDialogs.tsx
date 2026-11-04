@@ -17,6 +17,7 @@ const SHORTCUTS: [string, string][] = [
   ['Allgemein', ''],
   ['Strg+K', 'Suchen'],
   ['Strg+Umschalt+H', 'Letzte Änderungen'],
+  ['Strg+S', 'Sofort speichern (sonst automatisch)'],
   ['Strg+P', 'Ausgewählten Artikel als PDF exportieren'],
   ['Strg+L', 'Querverweise ein/aus'],
   ['Strg+0', 'Ganze Mind Map zeigen'],
