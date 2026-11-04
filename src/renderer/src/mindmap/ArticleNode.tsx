@@ -1,5 +1,5 @@
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
-import { CircleAlert, ListChecks, PenLine, TriangleAlert, UserX } from 'lucide-react'
+import { CircleAlert, ListChecks, Paperclip, PenLine, TriangleAlert, UserX } from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import type { ImpactStatus } from '../../../shared/impact'
 import type { ArticleSummary } from '../../../shared/types'
@@ -120,6 +120,12 @@ export function ArticleNode({ data }: NodeProps<ArticleFlowNode>): React.JSX.Ele
         <span className="mm-badge" title="Erledigte Ablaufschritte">
           <ListChecks size={12} />
           {article.checkDone}/{article.checkTotal}
+        </span>
+      )}
+      {article.attachmentCount > 0 && (
+        <span className="mm-badge mm-attachments" title={`${article.attachmentCount} ${article.attachmentCount === 1 ? 'Anhang' : 'Anhänge'}`}>
+          <Paperclip size={12} />
+          {article.attachmentCount}
         </span>
       )}
       {layout.childCount > 0 && layout.side !== 'root' && (

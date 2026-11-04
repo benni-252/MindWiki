@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { formatBytes, isBlockedAttachment, MAX_ATTACHMENT_BYTES } from '../../shared/attachments'
 import { findTemplate } from '../../shared/templates'
 import type { DbInfo, LoginInfo, ProxyPrompt, Role, Session, TreeData, UnsavedText, UpdateState } from '../../shared/types'
 import { errorMessage, flushPending, hasFailed, hasPending, saveAll, wiki } from './api'
@@ -50,6 +51,8 @@ interface State {
   fitNonce: number
   /** Steigt, wenn sich Inhalt/Felder/Abläufe eines Artikels von außen geändert haben (Vorlage) */
   articleVersion: number
+  /** Zählt hoch, wenn Anhänge dazukommen oder wegfallen (Liste im Artikel neu laden) */
+  attachmentsVersion: number
   /** Name, unter dem eigene Änderungen im Verlauf erscheinen */
   userName: string
   /** Wann welcher Artikel zuletzt angesehen wurde (für „neu geändert“) */
@@ -121,6 +124,10 @@ interface State {
   setApprovalRequired(on: boolean): Promise<void>
   setUpdate(update: UpdateState): void
   setProxyPrompt(prompt: ProxyPrompt | null): void
+  /** Dateien anhängen (Ziehen und Ablegen) bzw. über den Datei-Dialog */
+  attachFiles(articleId: number, files: File[]): Promise<void>
+  pickAttachments(articleId: number): Promise<void>
+  deleteAttachment(id: number): Promise<void>
   /** Artikel als PDF speichern (Speichern-Dialog im Hauptprozess) */
   exportPdf(id: number): Promise<void>
 }
@@ -182,6 +189,18 @@ let lastForeignToast = { id: 0, at: 0 }
 
 export const useWiki = create<State>((set, get) => {
   /** Führt eine Änderung aus, lädt den Baum neu und zeigt Fehler als Hinweis. */
+  /** Nach dem Anhängen: Liste und Mind Map auffrischen, Ergebnis melden. */
+  async function afterAttach(added: number, problems: string[]): Promise<void> {
+    if (added > 0) {
+      set({ attachmentsVersion: get().attachmentsVersion + 1 })
+      await get()
+        .loadTree()
+        .catch(() => undefined)
+      get().toast(added === 1 ? 'Datei angehängt.' : `${added} Dateien angehängt.`)
+    }
+    if (problems.length > 0) get().toast(problems.join(' '), 'error')
+  }
+
   async function mutate<T>(action: () => Promise<T>): Promise<T | undefined> {
     try {
       const result = await action()
@@ -242,6 +261,7 @@ export const useWiki = create<State>((set, get) => {
     centerRequest: null,
     fitNonce: 0,
     articleVersion: 0,
+    attachmentsVersion: 0,
     userName: '',
     seen: null,
     session: null,
@@ -564,6 +584,46 @@ export const useWiki = create<State>((set, get) => {
 
     setUpdate: (update) => set({ update }),
     setProxyPrompt: (proxyPrompt) => set({ proxyPrompt }),
+
+    async attachFiles(articleId, files) {
+      let added = 0
+      const problems: string[] = []
+      for (const file of files) {
+        // Früh prüfen, damit große Dateien gar nicht erst gelesen werden (verbindlich prüft der Hauptprozess)
+        if (isBlockedAttachment(file.name)) {
+          problems.push(`„${file.name}“ kann nicht angehängt werden: Programme und Skripte sind aus Sicherheitsgründen gesperrt.`)
+          continue
+        }
+        if (file.size > MAX_ATTACHMENT_BYTES) {
+          problems.push(`„${file.name}“ ist zu groß (${formatBytes(file.size)}) – höchstens ${formatBytes(MAX_ATTACHMENT_BYTES)} pro Datei.`)
+          continue
+        }
+        try {
+          await wiki.addAttachment(articleId, file.name, new Uint8Array(await file.arrayBuffer()))
+          added++
+        } catch (err) {
+          problems.push(errorMessage(err))
+        }
+      }
+      await afterAttach(added, problems)
+    },
+
+    async pickAttachments(articleId) {
+      try {
+        const result = await wiki.addAttachmentFiles(articleId)
+        await afterAttach(result.added, result.skipped)
+      } catch (err) {
+        get().toast(errorMessage(err), 'error')
+      }
+    },
+
+    async deleteAttachment(id) {
+      const ok = await mutate(async () => {
+        await wiki.deleteAttachment(id)
+        return true
+      })
+      if (ok) set({ attachmentsVersion: get().attachmentsVersion + 1 })
+    },
 
     async exportPdf(id) {
       const { tree, userName } = get()

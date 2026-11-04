@@ -1,9 +1,11 @@
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
+import { cleanAttachmentName, formatBytes, isBlockedAttachment, MAX_ATTACHMENT_BYTES, mimeOf } from '../shared/attachments'
 import { findTemplate, SECRET_LABEL, templateDoc, type ArticleTemplate } from '../shared/templates'
 import {
   IMAGE_URL_PATTERN,
   imageUrl,
   type Article,
+  type Attachment,
   type ArticleField,
   type ArticleSummary,
   type ChangeEntry,
@@ -222,6 +224,14 @@ export class WikiStore {
         draft,
         id
       )
+      // Anhänge: nur die Verweise kopieren – der Inhalt liegt einmal in `files`
+      this.run(
+        `INSERT INTO attachments (article_id, file_id, name, mime, size, added_by, added_at, position)
+         SELECT ?, file_id, name, mime, size, added_by, added_at, position FROM attachments
+          WHERE article_id = ? ORDER BY position, id`,
+        draft,
+        id
+      )
       for (const list of this.all<{ id: number; title: string; position: number }>(
         'SELECT id, title, position FROM checklists WHERE article_id = ? ORDER BY position, id',
         id
@@ -248,7 +258,10 @@ export class WikiStore {
     const draft = this.draftOf(id)
     if (!draft) return
     if (draft.created_by !== this.author) throw new WikiError('Nur wer den Entwurf angelegt hat, kann ihn verwerfen.')
-    this.run('DELETE FROM articles WHERE id = ?', draft.id)
+    this.tx(() => {
+      this.run('DELETE FROM articles WHERE id = ?', draft.id)
+      this.cleanupFiles()
+    })
   }
 
   approve(id: number): void {
@@ -294,6 +307,7 @@ export class WikiStore {
       // Der abgelehnte Text bleibt im Verlauf erhalten
       this.log(id, 'approval', `Änderungen von ${draft.created_by} abgelehnt${why}`, content)
       this.run('DELETE FROM articles WHERE id = ?', draft.id)
+      this.cleanupFiles()
     })
   }
 
@@ -317,6 +331,9 @@ export class WikiStore {
 
       this.run('DELETE FROM article_fields WHERE article_id = ?', id)
       this.run('UPDATE article_fields SET article_id = ? WHERE article_id = ?', id, draftId)
+
+      this.run('DELETE FROM attachments WHERE article_id = ?', id)
+      this.run('UPDATE attachments SET article_id = ? WHERE article_id = ?', id, draftId)
 
       // Abläufe: bestehende behalten (samt Protokoll), Schritte nur bei Änderungen ersetzen
       const lists = this.all<{ id: number; title: string; position: number; source_id: number | null }>(
@@ -348,6 +365,7 @@ export class WikiStore {
       // Was im Entwurf geändert wurde, erscheint im Verlauf des Artikels
       this.run('UPDATE changes SET article_id = ? WHERE article_id = ?', id, draftId)
       this.run('DELETE FROM articles WHERE id = ?', draftId)
+      this.cleanupFiles()
       this.log(id, 'approval', summary)
     })
   }
@@ -420,6 +438,19 @@ export class WikiStore {
       if (![...sources.values()].includes(old.id)) checklists.push({ title: old.title, change: 'removed', detail: [] })
     }
 
+    const attachmentFiles = (x: number) =>
+      this.all<{ file_id: number; name: string }>('SELECT file_id, name FROM attachments WHERE article_id = ? ORDER BY position, id', x)
+    const oldFiles = attachmentFiles(id)
+    const newFiles = attachmentFiles(draft.id)
+    const attachments: DraftDiff['attachments'] = [
+      ...newFiles
+        .filter((n) => !oldFiles.some((o) => o.file_id === n.file_id && o.name === n.name))
+        .map((n) => ({ name: n.name, change: 'added' as const })),
+      ...oldFiles
+        .filter((o) => !newFiles.some((n) => n.file_id === o.file_id && n.name === o.name))
+        .map((o) => ({ name: o.name, change: 'removed' as const }))
+    ]
+
     const textBefore = docText(before.content)
     const textAfter = docText(after.content)
     return {
@@ -429,6 +460,7 @@ export class WikiStore {
       iconChanged: before.icon !== after.icon,
       fields,
       checklists,
+      attachments,
       text: textBefore !== textAfter ? { before: textBefore, after: textAfter } : null
     }
   }
@@ -500,6 +532,8 @@ export class WikiStore {
       `SELECT a.id, a.parent_id, a.position, a.color, a.collapsed,
               CASE WHEN d.created_by = ? THEN d.title ELSE a.title END AS title,
               CASE WHEN d.created_by = ? THEN d.icon ELSE a.icon END AS icon,
+              (SELECT COUNT(*) FROM attachments x
+                WHERE x.article_id = CASE WHEN d.created_by = ? THEN d.id ELSE a.id END) AS attachment_count,
               a.approved_at IS NOT NULL AS approved, a.created_by,
               d.id AS draft_id, d.created_by AS draft_by, d.created_at AS draft_at,
               a.outage_since, a.outage_note,
@@ -532,6 +566,7 @@ export class WikiStore {
         ORDER BY a.position, a.id`,
       this.author,
       this.author,
+      this.author,
       this.author
     ).map(
       (r): ArticleSummary => ({
@@ -545,6 +580,7 @@ export class WikiStore {
         hasText: r.has_text === 1,
         checkTotal: r.total as number,
         checkDone: r.done as number,
+        attachmentCount: r.attachment_count as number,
         outageSince: (r.outage_since as string | null) ?? null,
         outageNote: (r.outage_note as string | null) ?? null,
         lastChangeAt: (r.last_at as string | null) ?? null,
@@ -1039,6 +1075,8 @@ export class WikiStore {
         WHERE d.depends_on_id = ? AND b.deleted_at IS NULL`
     )
 
+    const attachments = this.getAttachments(id).map((x) => ({ name: x.name, size: formatBytes(x.size) }))
+
     const notes: ExportArticle['notes'] = []
     const base = this.get<Row>('SELECT * FROM articles WHERE id = ?', baseId)!
     if (draftOf != null) notes.push({ kind: 'warning', text: `Entwurf von ${a.created_by ?? '?'} – noch nicht freigegeben.` })
@@ -1065,6 +1103,7 @@ export class WikiStore {
       checklists,
       dependsOn,
       neededBy,
+      attachments,
       notes,
       meta: `${changed} · exportiert ${formatStamp(this.now())} von ${this.author}`
     }
@@ -1221,11 +1260,13 @@ export class WikiStore {
   purgeArticle(id: number): void {
     this.run('DELETE FROM articles WHERE id = ? AND deleted_at IS NOT NULL', id)
     this.cleanupImages(10)
+    this.cleanupFiles()
   }
 
   emptyTrash(): void {
     this.run('DELETE FROM articles WHERE deleted_at IS NOT NULL')
     this.cleanupImages(10)
+    this.cleanupFiles()
   }
 
   /** Entfernt Bilder, die in keinem Artikel (auch nicht im Papierkorb) mehr vorkommen. */
@@ -1523,6 +1564,90 @@ export class WikiStore {
 
   getImage(id: number): { mime: string; data: Uint8Array } | undefined {
     return this.get<{ mime: string; data: Uint8Array }>('SELECT mime, data FROM images WHERE id = ?', id)
+  }
+
+  // ---------- Anhänge ----------
+
+  getAttachments(articleId: number): Attachment[] {
+    return this.all<Row>(
+      'SELECT id, article_id, name, mime, size, added_by, added_at FROM attachments WHERE article_id = ? ORDER BY position, id',
+      articleId
+    ).map((r) => ({
+      id: r.id as number,
+      articleId: r.article_id as number,
+      name: r.name as string,
+      mime: r.mime as string,
+      size: r.size as number,
+      addedBy: (r.added_by as string | null) ?? null,
+      addedAt: r.added_at as string
+    }))
+  }
+
+  /** Hängt eine Datei an (bei Freigabe-Pflicht wie Steckbrief-Felder nur im eigenen Entwurf/neuen Artikel). */
+  addAttachment(articleId: number, name: string, data: Uint8Array): number {
+    this.editTarget(articleId, false)
+    let clean = cleanAttachmentName(name)
+    if (isBlockedAttachment(clean)) {
+      throw new WikiError(`${q(clean)} kann nicht angehängt werden: Programme und Skripte sind aus Sicherheitsgründen gesperrt.`)
+    }
+    if (data.byteLength > MAX_ATTACHMENT_BYTES) {
+      throw new WikiError(
+        `${q(clean)} ist zu groß (${formatBytes(data.byteLength)}) – höchstens ${formatBytes(MAX_ATTACHMENT_BYTES)} pro Datei.`
+      )
+    }
+    if (data.byteLength === 0) throw new WikiError(`${q(clean)} ist leer.`)
+    // Gleicher Name schon da: „Name (2).pdf“
+    const taken = new Set(this.getAttachments(articleId).map((x) => x.name.toLocaleLowerCase('de')))
+    if (taken.has(clean.toLocaleLowerCase('de'))) {
+      const dot = clean.lastIndexOf('.')
+      const [base, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, '']
+      let n = 2
+      while (taken.has(`${base} (${n})${ext}`.toLocaleLowerCase('de'))) n++
+      clean = `${base} (${n})${ext}`
+    }
+    return this.tx(() => {
+      const fileId = this.run('INSERT INTO files (data, created_at) VALUES (?, ?)', data, this.now())
+      const id = this.run(
+        `INSERT INTO attachments (article_id, file_id, name, mime, size, added_by, added_at, position)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        articleId,
+        fileId,
+        clean,
+        mimeOf(clean),
+        data.byteLength,
+        this.author,
+        this.now(),
+        this.nextPosition('attachments', 'article_id', articleId)
+      )
+      this.log(articleId, 'attachment', `Anhang ${q(clean)} hinzugefügt (${formatBytes(data.byteLength)})`)
+      return id
+    })
+  }
+
+  deleteAttachment(id: number): void {
+    const old = this.get<{ article_id: number; name: string }>('SELECT article_id, name FROM attachments WHERE id = ?', id)
+    if (!old) return
+    this.editTarget(old.article_id, false)
+    this.tx(() => {
+      this.run('DELETE FROM attachments WHERE id = ?', id)
+      this.log(old.article_id, 'attachment', `Anhang ${q(old.name)} entfernt`)
+      this.cleanupFiles()
+    })
+  }
+
+  /** Inhalt eines Anhangs (zum Öffnen oder Speichern). */
+  getAttachmentFile(id: number): { name: string; mime: string; data: Uint8Array } | undefined {
+    return this.get<{ name: string; mime: string; data: Uint8Array }>(
+      'SELECT a.name, a.mime, f.data FROM attachments a JOIN files f ON f.id = a.file_id WHERE a.id = ?',
+      id
+    )
+  }
+
+  /** Entfernt Datei-Inhalte, auf die kein Anhang (auch nicht in Entwürfen oder im Papierkorb) mehr zeigt. */
+  cleanupFiles(): number {
+    return Number(
+      this.db.prepare('DELETE FROM files WHERE id NOT IN (SELECT file_id FROM attachments)').run().changes
+    )
   }
 }
 

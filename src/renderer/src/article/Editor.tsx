@@ -26,6 +26,8 @@ interface Props {
   content: string | null
   editable: boolean
   onStatus(status: SaveStatus): void
+  /** Dateien, die keine Bilder sind, auf den Text gezogen: als Anhang übernehmen */
+  onDropFiles?(files: File[]): void
   /**
    * Freigabe: 'all' – der ganze Text ist noch nicht freigegeben (neuer Artikel);
    * 'changes' – Entwurf, Absätze mit Unterschieden zu `baseline` werden markiert.
@@ -120,9 +122,12 @@ export function Editor({
   content,
   editable,
   onStatus,
+  onDropFiles,
   unapproved = null,
   baseline = null
 }: Props): React.JSX.Element {
+  const onDropFilesRef = useRef(onDropFiles)
+  onDropFilesRef.current = onDropFiles
   const latest = useRef<{ json: string; text: string } | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const keepTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -217,6 +222,16 @@ export function Editor({
           return true
         },
         handleDrop: (view, event, _slice, moved) => {
+          const all = [...(event.dataTransfer?.files ?? [])]
+          const others = all.filter((f) => !f.type.startsWith('image/'))
+          // Dokumente (PDF, Word …) werden Anhänge, Bilder landen im Text
+          if (!moved && others.length > 0 && onDropFilesRef.current) {
+            onDropFilesRef.current(others)
+            if (others.length === all.length) {
+              event.preventDefault()
+              return true
+            }
+          }
           const files = imageFiles(event.dataTransfer?.files)
           if (moved || files.length === 0 || !editorRef.current) return false
           const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos

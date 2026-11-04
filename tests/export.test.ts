@@ -61,6 +61,7 @@ describe('HTML für den PDF-Export', () => {
         checklists: [{ title: 'Neustart', steps: ['Dienste stoppen'], lastRun: '01.11.2026 10:00' }],
         dependsOn: ['Switch'],
         neededBy: [],
+        attachments: [],
         notes: [{ kind: 'danger', text: 'Störung seit heute' }],
         meta: 'Zuletzt geändert …'
       },

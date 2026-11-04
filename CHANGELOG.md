@@ -2,6 +2,22 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.8.0
+
+**Neu: Dokumente an Artikel anhängen**
+- Im Artikel gibt es den Bereich *Anhänge*: PDF, Word, Excel, Visio, Bilder, ZIP … über *Datei anhängen…* oder einfach aus dem Explorer auf den Bereich oder den Text ziehen.
+- *Öffnen* zeigt eine schreibgeschützte Kopie im passenden Programm, *Speichern unter…* legt eine Kopie ab, *Entfernen* fragt vorher nach.
+- Die Dateien liegen in der Wiki-Datei – alle am Netzlaufwerk sehen sie, und sie sind in jeder Sicherung. Bis 50 MB pro Datei.
+- Programme und Skripte (.exe, .bat, .ps1 …) sind aus Sicherheitsgründen gesperrt.
+- Büroklammer mit Anzahl in der Mind Map, Einträge im Verlauf, Liste der Anhänge im PDF-Export.
+- Mit Freigabe-Pflicht laufen neue und entfernte Anhänge wie andere Änderungen über die Freigabe.
+
+**Wichtig bei gemeinsamer Wiki-Datei:** Diese Version erweitert die Datenbank (vorher wird automatisch eine Sicherung „…_vor-Update-v6“ angelegt). Ältere MindWiki-Versionen öffnen die Datei danach nicht mehr – bitte alle auf 1.8.0 aktualisieren (ab 1.6.0 kommt das Update in der App).
+
+**Download**
+- `MindWiki-Setup-1.8.0.exe` – Installer (mit automatischen Updates)
+- `MindWiki-1.8.0-portable.exe` – ohne Installation starten
+
 ## 1.7.0
 
 **Neu: Nichts geht verloren, wenn die Wiki-Datei nicht erreichbar ist**

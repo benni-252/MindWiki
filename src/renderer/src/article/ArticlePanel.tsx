@@ -24,6 +24,7 @@ import { IconPicker, NodeIcon } from '../icons'
 import { useWiki } from '../store'
 import { indexTree, isDeletedUser, pathTo, seenAt } from '../treeUtils'
 import { ApprovalBanner } from './ApprovalBanner'
+import { Attachments } from './Attachments'
 import { Backlinks } from './Backlinks'
 import { Dependencies } from './Dependencies'
 import { Editor, type SaveStatus } from './Editor'
@@ -296,7 +297,8 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
 
   const path = tree ? pathTo(tree, id).slice(0, -1) : []
   const s = useWiki.getState()
-  const isEmpty = !!summary && !summary.hasText && summary.checkTotal === 0 && fields.length === 0
+  const isEmpty =
+    !!summary && !summary.hasText && summary.checkTotal === 0 && summary.attachmentCount === 0 && fields.length === 0
 
   return (
     <aside className="panel" aria-label="Artikel">
@@ -395,9 +397,11 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
                 content={article.content}
                 editable={!contentReadOnly && !leftover}
                 onStatus={setStatus}
+                onDropFiles={(files) => void s.attachFiles(article.id, files)}
                 unapproved={unapproved}
                 baseline={baseline}
               />
+              <Attachments articleId={article.id} readOnly={contentReadOnly} />
               <ChecklistSection
                 key={`checklists-${article.id}-${shownVersion}`}
                 articleId={article.id}
