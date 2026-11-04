@@ -42,6 +42,8 @@ export const TEXT_MERGE_MS = 15 * 60_000
 export const NAMING_AFTER_CREATE_MS = 5 * 60_000
 /** So viele frühere Textfassungen bleiben je Artikel gespeichert. */
 export const KEEP_TEXT_VERSIONS = 30
+/** Die Suche im Verlauf schaut höchstens so viele (die neuesten) Einträge an */
+export const SEARCH_SCAN_LIMIT = 100_000
 
 /** Zitat für Verlaufseinträge, lange Werte gekürzt. */
 function q(value: string, max = 60): string {
@@ -990,14 +992,51 @@ export class WikiStore {
   }
 
   getRecentChanges(limit: number): RecentChange[] {
+    return this.recentChangeRows(Math.max(1, Math.min(2000, Math.floor(limit)))).map((r) => this.toRecentChange(r))
+  }
+
+  /**
+   * Durchsucht den Verlauf des ganzen Wikis: Jedes Wort muss im Artikelnamen, bei der Person,
+   * in der Beschreibung oder im Datum (TT.MM.JJJJ) vorkommen. Groß-/Kleinschreibung und Umlaute
+   * werden wie im Deutschen verglichen – deshalb hier statt mit SQL-LIKE (das kennt nur A–Z).
+   */
+  searchChanges(query: string, limit: number): RecentChange[] {
+    const words = query.toLocaleLowerCase('de').split(/\s+/).filter(Boolean)
+    const max = Math.max(1, Math.min(2000, Math.floor(limit)))
+    if (words.length === 0) return this.getRecentChanges(max)
+    const found: RecentChange[] = []
+    for (const r of this.recentChangeRows(SEARCH_SCAN_LIMIT)) {
+      const date = new Date(r.at as string)
+      const haystack = [
+        r.title,
+        r.author,
+        r.summary,
+        date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        date.toLocaleDateString('de-DE')
+      ]
+        .join('\n')
+        .toLocaleLowerCase('de')
+      if (words.every((w) => haystack.includes(w))) {
+        found.push(this.toRecentChange(r))
+        if (found.length >= max) break
+      }
+    }
+    return found
+  }
+
+  private recentChangeRows(limit: number): Row[] {
     return this.all<Row>(
       `SELECT c.id, c.article_id, c.at, c.author, c.kind, c.summary, c.old_content IS NOT NULL AS has_version,
               a.title, a.deleted_at IS NOT NULL AS deleted
          FROM changes c JOIN articles a ON a.id = c.article_id
         WHERE a.draft_of IS NULL
         ORDER BY c.at DESC, c.id DESC LIMIT ?`,
-      Math.max(1, Math.min(2000, Math.floor(limit)))
-    ).map((r) => ({ ...this.toChange(r), title: r.title as string, deleted: r.deleted === 1 }))
+      limit
+    )
+  }
+
+  private toRecentChange(r: Row): RecentChange {
+    return { ...this.toChange(r), title: r.title as string, deleted: r.deleted === 1 }
   }
 
   getTextVersion(changeId: number): string | null {

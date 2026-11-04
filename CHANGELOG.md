@@ -2,6 +2,19 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.9.0
+
+**Neu: Suche in den letzten Änderungen**
+- Im Dialog *Letzte Änderungen* (Uhr-Symbol oben oder Strg+Umschalt+H) gibt es ein Suchfeld.
+- Gesucht wird im ganzen Verlauf des Wikis: nach Artikel, Person, Beschreibung der Änderung (z. B. eine IP-Adresse aus dem Steckbrief oder ein alter Titel) und Datum (TT.MM.JJJJ).
+- Mehrere Wörter müssen alle vorkommen („Ben Firewall“), Groß-/Kleinschreibung und Umlaute spielen keine Rolle. Treffer sind gelb markiert, Esc leert die Suche.
+
+**Download**
+- `MindWiki-Setup-1.9.0.exe` – Installer (mit automatischen Updates)
+- `MindWiki-1.9.0-portable.exe` – ohne Installation starten
+
+Keine Änderung an der Datenbank – 1.8.0 und 1.9.0 können dieselbe Wiki-Datei gleichzeitig nutzen.
+
 ## 1.8.0
 
 **Neu: Dokumente an Artikel anhängen**

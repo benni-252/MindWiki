@@ -180,6 +180,53 @@ describe('Verlauf', () => {
   })
 })
 
+describe('Suche im Verlauf', () => {
+  it('findet Änderungen nach Artikel, Person, Beschreibung und Datum', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-11-03T09:00:00'))
+      const fw = store.createArticle(root, 'Firewall Zentrale')
+      vi.setSystemTime(new Date('2026-11-04T10:00:00'))
+      store.author = 'Björn'
+      store.addField(fw, 'IP-Adresse', '10.0.0.1')
+      const srv = store.createArticle(root, 'Server Öst')
+      store.author = 'Anna'
+      store.renameArticle(srv, 'Server Ost')
+
+      const found = (q: string) => store.searchChanges(q, 50).map((c) => `${c.author}: ${c.summary}`)
+      // Person – Groß-/Kleinschreibung und Umlaute egal
+      expect(found('BJÖRN')).toEqual(['Björn: Angelegt', 'Björn: Feld „IP-Adresse“ hinzugefügt: „10.0.0.1“'])
+      // Beschreibung: Wert aus dem Steckbrief, alter Titel
+      expect(found('10.0.0.1')).toEqual(['Björn: Feld „IP-Adresse“ hinzugefügt: „10.0.0.1“'])
+      expect(found('öst')).toEqual(['Anna: Titel geändert: „Server Öst“ → „Server Ost“'])
+      // Artikel (aktueller Name) und mehrere Wörter: alle müssen vorkommen
+      expect(found('firewall angelegt')).toEqual(['Anna: Angelegt'])
+      expect(found('firewall björn')).toEqual(['Björn: Feld „IP-Adresse“ hinzugefügt: „10.0.0.1“'])
+      // Datum, mit und ohne führende Null
+      expect(found('03.11.2026')).toEqual(['Anna: Angelegt'])
+      expect(found('3.11.2026')).toEqual(['Anna: Angelegt'])
+      expect(found('gibt es nicht')).toEqual([])
+      // Leere Suche = die neuesten Änderungen, Höchstzahl wird beachtet
+      expect(store.searchChanges('  ', 2)).toHaveLength(2)
+      expect(store.searchChanges('server', 1)).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('zeigt keine Änderungen aus noch nicht freigegebenen Entwürfen', () => {
+    store.setApprovalRequired(true)
+    const a = store.createArticle(root, 'Handbuch')
+    store.author = 'Ben'
+    store.approve(a)
+    store.author = 'Anna'
+    const draft = store.startDraft(a)
+    store.addField(draft, 'Geheimprojekt', 'x')
+    expect(store.searchChanges('Geheimprojekt', 10)).toEqual([])
+    expect(store.searchChanges('Handbuch', 10).map((c) => c.summary)).toContain('Neuen Artikel von Anna freigegeben')
+  })
+})
+
 describe('Gemeinsame Datei', () => {
   it('erlaubt zwei Verbindungen gleichzeitig und erkennt fremde Änderungen', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mindwiki-'))

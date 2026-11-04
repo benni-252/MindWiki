@@ -7,9 +7,11 @@ interface Props {
   children: ReactNode
   footer?: ReactNode
   wide?: boolean
+  /** Escape zuerst hier behandeln (z. B. Suche leeren); true = erledigt, Dialog bleibt offen */
+  onEscape?: () => boolean
 }
 
-export function Modal({ title, onClose, children, footer, wide }: Props): React.JSX.Element {
+export function Modal({ title, onClose, children, footer, wide, onEscape }: Props): React.JSX.Element {
   const backdrop = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -19,12 +21,16 @@ export function Modal({ title, onClose, children, footer, wide }: Props): React.
       if (open[open.length - 1] !== backdrop.current) return
       if (e.key === 'Escape') {
         e.stopPropagation()
+        if (onEscape?.()) {
+          e.preventDefault()
+          return
+        }
         onClose()
       }
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose])
+  }, [onClose, onEscape])
 
   return (
     <div ref={backdrop} className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
