@@ -1,7 +1,23 @@
-import { BookOpen, ChevronRight, FileDown, Maximize2, Minimize2, PenLine, Shapes, TriangleAlert, UserX, X } from 'lucide-react'
+import {
+  BookOpen,
+  ChevronRight,
+  CloudOff,
+  Copy,
+  FileDown,
+  Maximize2,
+  Minimize2,
+  PenLine,
+  RotateCcw,
+  Save,
+  Shapes,
+  Trash2,
+  TriangleAlert,
+  UserX,
+  X
+} from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TEMPLATES } from '../../../shared/templates'
-import type { Article, ArticleField } from '../../../shared/types'
+import type { Article, ArticleField, UnsavedText } from '../../../shared/types'
 import { errorMessage, wiki } from '../api'
 import { ChecklistSection } from '../checklist/ChecklistSection'
 import { IconPicker, NodeIcon } from '../icons'
@@ -19,7 +35,15 @@ const STATUS_TEXT: Record<SaveStatus, string> = {
   saved: 'Gespeichert',
   dirty: 'Ungespeicherte Änderungen',
   saving: 'Speichert …',
-  error: 'Nicht gespeichert!'
+  error: 'Nicht gespeichert'
+}
+
+const STATUS_TITLE: Record<SaveStatus, string> = {
+  saved: 'Alle Änderungen sind in der Wiki-Datei gespeichert.',
+  dirty: 'Wird gleich automatisch gespeichert.',
+  saving: 'Wird gerade gespeichert.',
+  error:
+    'Die Wiki-Datei ist nicht erreichbar. Dein Text ist auf diesem Rechner aufgehoben, MindWiki versucht es von selbst weiter.'
 }
 
 function TitleInput({ id, title, readOnly }: { id: number; title: string; readOnly: boolean }): React.JSX.Element {
@@ -64,6 +88,78 @@ function TitleInput({ id, title, readOnly }: { id: number; title: string; readOn
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+/** Text, der früher nicht gespeichert werden konnte: wiederherstellen, kopieren oder verwerfen. */
+function UnsavedBanner({
+  entry,
+  contentId,
+  canRestore
+}: {
+  entry: UnsavedText
+  contentId: number
+  canRestore: boolean
+}): React.JSX.Element {
+  const s = useWiki.getState()
+  const done = async (): Promise<void> => {
+    await wiki.dropUnsaved(entry.contentId)
+    s.refreshUnsaved()
+    s.reloadArticle()
+  }
+  const restore = async (): Promise<void> => {
+    try {
+      const result = await wiki.saveArticleContent(contentId, entry.content, entry.text)
+      await done()
+      if (result.treeChanged) await s.loadTree()
+      s.toast('Text wiederhergestellt und gespeichert.')
+    } catch (err) {
+      s.toast(`Wiederherstellen nicht möglich: ${errorMessage(err)}`, 'error')
+    }
+  }
+  const copy = (): void => {
+    navigator.clipboard
+      .writeText(entry.text)
+      .then(() => s.toast('Text kopiert.'))
+      .catch(() => s.toast('Kopieren nicht möglich.', 'error'))
+  }
+  const discard = async (): Promise<void> => {
+    const ok = await s.confirm({
+      title: 'Aufgehobenen Text verwerfen?',
+      message: `Der nicht gespeicherte Text vom ${formatDate(entry.at)} wird gelöscht. Das lässt sich nicht rückgängig machen.`,
+      confirmLabel: 'Verwerfen',
+      danger: true
+    })
+    if (ok) await done().catch((err) => s.toast(errorMessage(err), 'error'))
+  }
+
+  return (
+    <div className="unsaved-banner" role="alert">
+      <CloudOff size={18} />
+      <div>
+        <strong>Nicht gespeicherter Text vom {formatDate(entry.at)}</strong>
+        <p>
+          Die Wiki-Datei war nicht erreichbar, deshalb ist dieser Text nur auf diesem Rechner aufgehoben.
+          {canRestore
+            ? ' „Wiederherstellen“ ersetzt den Text des Artikels – der bisherige bleibt im Verlauf.'
+            : ' Wiederherstellen geht hier nicht (der Artikel ist schreibgeschützt oder gelöscht) – du kannst den Text aber kopieren.'}{' '}
+          Bis du dich entschieden hast, ist der Text gesperrt.
+        </p>
+        <div className="unsaved-actions">
+          {canRestore && (
+            <button className="btn btn-small btn-primary" onClick={() => void restore()}>
+              <RotateCcw size={14} /> Wiederherstellen
+            </button>
+          )}
+          <button className="btn btn-small" onClick={copy}>
+            <Copy size={14} /> Text kopieren
+          </button>
+          <button className="btn btn-small" onClick={() => void discard()}>
+            <Trash2 size={14} /> Verwerfen
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /** Symbol des Artikels; im Bearbeiten-Modus per Klick änderbar. */
@@ -133,6 +229,7 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
   const panelMax = useWiki((s) => s.panelMax)
   const version = useWiki((s) => s.articleVersion)
   const userName = useWiki((s) => s.userName)
+  const leftover = useWiki((s) => s.unsaved.find((u) => u.articleId === id))
   const summary = tree ? indexTree(tree).byId.get(id) : undefined
 
   // Freigabe: Inhalt kommt aus dem eigenen Entwurf; fremde Entwürfe und freigegebene Artikel sind nur lesbar.
@@ -184,6 +281,9 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
     }
   }, [contentId, version])
 
+  // Liegt von früher ein nicht gespeicherter Text dieses Artikels auf dem Rechner?
+  useEffect(() => useWiki.getState().refreshUnsaved(), [id])
+
   const reloadFields = useCallback(async () => setFields(await wiki.getFields(contentId)), [contentId])
 
   // Was andere geändert haben, seit ich den Artikel zuletzt gesehen habe – Stand beim Öffnen merken
@@ -210,7 +310,17 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
           ))}
         </nav>
         <div className="panel-actions">
-          <span className={`save-status ${status}`}>{STATUS_TEXT[status]}</span>
+          <span className={`save-status ${status}`} title={STATUS_TITLE[status]}>
+            {STATUS_TEXT[status]}
+          </span>
+          <button
+            className={`icon-btn save-btn ${status}`}
+            title="Jetzt speichern (Strg+S)"
+            aria-label="Speichern"
+            onClick={() => void s.saveNow()}
+          >
+            <Save size={17} />
+          </button>
           {summary && (
             <button
               className={`icon-btn ${summary.outageSince ? 'outage-active' : 'danger'}`}
@@ -252,6 +362,14 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
               <TitleInput id={contentId} title={summary.title} readOnly={contentReadOnly} />
             </div>
           )}
+          {leftover && (
+            <UnsavedBanner
+              key={`${leftover.contentId}-${leftover.at}`}
+              entry={leftover}
+              contentId={contentId}
+              canRestore={!!article && !contentReadOnly}
+            />
+          )}
           {article === undefined && <p className="muted">Lade …</p>}
           {article === null && <p className="muted">Dieser Artikel existiert nicht mehr.</p>}
           {article && (
@@ -272,8 +390,10 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
               <Editor
                 key={`editor-${article.id}-${shownVersion}-${unapproved ?? ''}`}
                 articleId={article.id}
+                panelId={id}
+                title={summary?.title ?? ''}
                 content={article.content}
-                editable={!contentReadOnly}
+                editable={!contentReadOnly && !leftover}
                 onStatus={setStatus}
                 unapproved={unapproved}
                 baseline={baseline}

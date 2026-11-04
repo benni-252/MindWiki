@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { RPC_METHODS, type Role, type WikiRpc } from '../shared/types'
 import { backupTo, NotAWikiError } from './db'
+import { friendlyDbError } from './dbErrors'
 import { articleToHtml } from './exportHtml'
 import { renderPdf } from './pdf'
 import { ensureSampleWiki } from './sample'
@@ -20,6 +21,7 @@ import {
 } from './updater'
 import { defaultDbPath, loadSettings, sampleDbPath, saveSettings } from './settings'
 import { WikiError, type WikiStore } from './store'
+import { dbKey, UnsavedStore } from './unsaved'
 import { currentDbFile, currentSession, currentStore, openWiki, setSession, wikiName } from './wiki'
 
 type FileOps =
@@ -36,6 +38,10 @@ type FileOps =
   | 'getProxyPrompt'
   | 'getSavedProxyLogins'
   | 'forgetProxyLogins'
+  | 'keepUnsaved'
+  | 'dropUnsaved'
+  | 'listUnsaved'
+  | 'holdClose'
   | 'newDb'
   | 'openDb'
   | 'backupDb'
@@ -72,7 +78,12 @@ const PUBLIC = new Set<string>([
   'cancelProxyLogin',
   'getProxyPrompt',
   'getSavedProxyLogins',
-  'forgetProxyLogins'
+  'forgetProxyLogins',
+  // Brauchen die Wiki-Datei nicht – müssen gerade dann gehen, wenn sie nicht erreichbar ist
+  'keepUnsaved',
+  'dropUnsaved',
+  'listUnsaved',
+  'holdClose'
 ])
 
 /** Mindestrolle je Aktion; alles andere dürfen alle angemeldeten Benutzer (Mitarbeiter). */
@@ -131,7 +142,22 @@ export function tryOpen(win: BrowserWindow | null, file: string): boolean {
   }
 }
 
-export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: () => void): void {
+/** Nicht gespeicherte Texte: im Benutzerordner dieses Rechners, je Wiki-Datei und Benutzer. */
+function unsavedStore(): { store: UnsavedStore; db: string; user: string } {
+  const session = currentSession()
+  if (!session) throw new WikiError('Bitte zuerst anmelden.')
+  return {
+    store: new UnsavedStore(path.join(app.getPath('userData'), 'Nicht-gespeichert.json')),
+    db: dbKey(currentDbFile()),
+    user: session.username
+  }
+}
+
+export function registerIpc(
+  getWindow: () => BrowserWindow | null,
+  allowClose: () => void,
+  holdClose: () => void
+): void {
   const fileOps: Pick<WikiRpc, FileOps> = {
     getDbInfo: () => ({ path: currentDbFile(), name: wikiName(), isSample: currentStore().isSample() }),
 
@@ -170,6 +196,20 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
     getProxyPrompt,
     getSavedProxyLogins,
     forgetProxyLogins,
+
+    keepUnsaved: (text) => {
+      const { store, db, user } = unsavedStore()
+      store.keep(db, user, { ...text, at: new Date().toISOString() })
+    },
+    dropUnsaved: (contentId) => {
+      const { store, db, user } = unsavedStore()
+      store.drop(db, user, contentId)
+    },
+    listUnsaved: () => {
+      const { store, db, user } = unsavedStore()
+      return store.list(db, user)
+    },
+    holdClose,
 
     openSampleDb: async () => {
       const win = getWindow()
@@ -280,15 +320,27 @@ export function registerIpc(getWindow: () => BrowserWindow | null, allowClose: (
 
   for (const name of RPC_METHODS) {
     ipcMain.handle(`wiki:${name}`, (_event, ...args: unknown[]) => {
-      authorize(name)
-      if (name in fileOps) {
-        return (fileOps[name as FileOps] as (...a: unknown[]) => unknown)(...args)
+      try {
+        authorize(name)
+        let result: unknown
+        if (name in fileOps) {
+          result = (fileOps[name as FileOps] as (...a: unknown[]) => unknown)(...args)
+        } else {
+          if (name === 'saveImage' && (args[1] as Uint8Array).byteLength > MAX_IMAGE_BYTES) {
+            throw new Error('Das Bild ist größer als 25 MB.')
+          }
+          const store = currentStore() as unknown as Record<string, (...a: unknown[]) => unknown>
+          result = store[name](...args)
+        }
+        // Fehler der Wiki-Datei (gesperrt, Netzlaufwerk weg …) verständlich melden
+        return result instanceof Promise
+          ? result.catch((err: unknown) => {
+              throw friendlyDbError(err)
+            })
+          : result
+      } catch (err) {
+        throw friendlyDbError(err)
       }
-      if (name === 'saveImage' && (args[1] as Uint8Array).byteLength > MAX_IMAGE_BYTES) {
-        throw new Error('Das Bild ist größer als 25 MB.')
-      }
-      const store = currentStore() as unknown as Record<string, (...a: unknown[]) => unknown>
-      return store[name](...args)
     })
   }
 }

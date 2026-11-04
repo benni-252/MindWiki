@@ -2853,3 +2853,45 @@ input.fs-label::-webkit-calendar-picker-indicator {
   gap: 8px;
   margin-top: 12px;
 }
+
+/* ---------- Nicht gespeicherter Text (Wiki-Datei nicht erreichbar) ---------- */
+
+.save-btn.dirty,
+.save-btn.saving {
+  color: var(--warning);
+}
+.save-btn.error {
+  color: var(--danger);
+}
+.unsaved-banner {
+  display: flex;
+  gap: 10px;
+  margin: 4px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  font-size: 13px;
+}
+.unsaved-banner > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--danger);
+}
+.unsaved-banner p {
+  margin: 4px 0 8px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.unsaved-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.notice-bar.danger {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+}
+.notice-bar.danger > svg {
+  color: var(--danger);
+}

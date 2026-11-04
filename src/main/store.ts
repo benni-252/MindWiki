@@ -508,10 +508,21 @@ export class WikiStore {
               lc.at AS last_at, lc.author AS last_by, oc.at AS other_at, oc.author AS other_by
          FROM articles a
          LEFT JOIN articles d ON d.draft_of = a.id
-         LEFT JOIN (SELECT article_id, MAX(at) AS at, author FROM changes GROUP BY article_id) lc
-           ON lc.article_id = a.id
-         LEFT JOIN (SELECT article_id, MAX(at) AS at, author FROM changes WHERE author <> ? GROUP BY article_id) oc
-           ON oc.article_id = a.id
+         -- Letzte Änderung je Artikel; bei gleicher Uhrzeit zählt die später eingetragene (wie im Verlauf)
+         LEFT JOIN (
+           SELECT article_id, at, author FROM (
+             SELECT article_id, at, author,
+                    ROW_NUMBER() OVER (PARTITION BY article_id ORDER BY at DESC, id DESC) AS n
+               FROM changes)
+            WHERE n = 1
+         ) lc ON lc.article_id = a.id
+         LEFT JOIN (
+           SELECT article_id, at, author FROM (
+             SELECT article_id, at, author,
+                    ROW_NUMBER() OVER (PARTITION BY article_id ORDER BY at DESC, id DESC) AS n
+               FROM changes WHERE author <> ?)
+            WHERE n = 1
+         ) oc ON oc.article_id = a.id
          LEFT JOIN (
            SELECT cl.article_id, COUNT(i.id) AS total, SUM(i.checked) AS done
              FROM checklists cl JOIN checklist_items i ON i.checklist_id = cl.id

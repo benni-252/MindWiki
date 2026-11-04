@@ -17,6 +17,8 @@ protocol.registerSchemesAsPrivileged([
 
 let win: BrowserWindow | null = null
 let closeAllowed = false
+/** Schließt das Fenster, falls die Oberfläche nicht antwortet */
+let closeTimer: ReturnType<typeof setTimeout> | undefined
 
 function send(event: WikiEvent): void {
   win?.webContents.send('wiki:event', event)
@@ -43,6 +45,7 @@ function buildMenu(): void {
         item('Neues Wiki…', 'new-db', 'CmdOrCtrl+N'),
         item('Wiki öffnen…', 'open-db', 'CmdOrCtrl+O'),
         { type: 'separator' },
+        item('Speichern', 'save', 'CmdOrCtrl+S'),
         item('Artikel als PDF exportieren…', 'export-pdf', 'CmdOrCtrl+P'),
         { type: 'separator' },
         item('Sicherung erstellen…', 'backup-db', 'CmdOrCtrl+Shift+S'),
@@ -157,7 +160,8 @@ function createWindow(): void {
     if (closeAllowed) return
     event.preventDefault()
     send({ type: 'request-close' })
-    setTimeout(() => {
+    clearTimeout(closeTimer)
+    closeTimer = setTimeout(() => {
       closeAllowed = true
       win?.close()
     }, 3000)
@@ -214,7 +218,9 @@ if (!app.requestSingleInstanceLock()) {
       () => {
         closeAllowed = true
         win?.close()
-      }
+      },
+      // Die Oberfläche fragt nach (Text nicht gespeichert): nicht nach 3 Sekunden zwangsweise schließen
+      () => clearTimeout(closeTimer)
     )
     onWikiChange(() => {
       seenDataVersion = null

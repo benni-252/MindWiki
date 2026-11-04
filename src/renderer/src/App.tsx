@@ -1,9 +1,9 @@
 import { ReactFlowProvider } from '@xyflow/react'
-import { FlaskConical, KeyRound } from 'lucide-react'
+import { CloudOff, FlaskConical, KeyRound } from 'lucide-react'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import type { MenuAction } from '../../shared/types'
 import { runAction } from './actions'
-import { errorMessage, flushPending, wiki } from './api'
+import { errorMessage, wiki } from './api'
 import { ArticlePanel } from './article/ArticlePanel'
 import { ConfirmDialog } from './dialogs/ConfirmDialog'
 import { ApprovalsDialog } from './dialogs/ApprovalsDialog'
@@ -62,6 +62,34 @@ function SampleBar(): React.JSX.Element | null {
   )
 }
 
+/** Texte, die nicht gespeichert werden konnten und auf diesem Rechner aufgehoben sind. */
+function UnsavedBar(): React.JSX.Element | null {
+  const unsaved = useWiki((s) => s.unsaved)
+  const panelOpen = useWiki((s) => s.panelOpen)
+  const selectedId = useWiki((s) => s.selectedId)
+  // Der offene Artikel zeigt seinen Hinweis selbst
+  const shown = unsaved.filter((u) => !(panelOpen && u.articleId === selectedId))
+  if (shown.length === 0) return null
+  return (
+    <div className="notice-bar danger" role="note">
+      <CloudOff size={16} />
+      <span>
+        <strong>Nicht gespeicherter Text</strong> ist auf diesem Rechner aufgehoben:
+      </span>
+      {shown.slice(0, 3).map((u) => (
+        <button
+          key={u.contentId}
+          className="btn btn-small"
+          onClick={() => useWiki.getState().openArticle(u.articleId, 'flash')}
+        >
+          {u.title || 'Artikel'} öffnen
+        </button>
+      ))}
+      {shown.length > 3 && <span>und {shown.length - 3} weitere</span>}
+    </div>
+  )
+}
+
 function readPanelWidth(): number {
   try {
     const v = Number(localStorage.getItem('mindwiki.panelWidth'))
@@ -97,6 +125,7 @@ export function App(): React.JSX.Element {
       'ctrl+l': 'toggle-links',
       'ctrl+0': 'fit',
       'ctrl+p': 'export-pdf',
+      'ctrl+s': 'save',
       f1: 'shortcuts'
     }
     const onKey = (e: KeyboardEvent): void => {
@@ -114,7 +143,12 @@ export function App(): React.JSX.Element {
     () =>
       wiki.onEvent((event) => {
         if (event.type === 'request-close') {
-          void flushPending().finally(() => void wiki.confirmClose())
+          void (async () => {
+            // Nicht nach 3 Sekunden zwangsweise schließen, solange hier noch gespeichert oder nachgefragt wird
+            await wiki.holdClose()
+            const ok = await useWiki.getState().confirmLeave('app').catch(() => true)
+            if (ok) await wiki.confirmClose()
+          })()
         } else if (event.type === 'external-change') {
           void useWiki.getState().externalChange()
         } else if (event.type === 'update') {
@@ -178,6 +212,7 @@ export function App(): React.JSX.Element {
           style={{ '--panel-width': `${panelWidth}px` } as React.CSSProperties}
         >
           <div className="notices">
+            <UnsavedBar />
             <AdminPasswordBar />
             <SampleBar />
           </div>
