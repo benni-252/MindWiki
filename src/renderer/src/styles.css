@@ -2994,3 +2994,41 @@ input.fs-label::-webkit-calendar-picker-indicator {
 .att-hint {
   margin: 8px 0 0;
 }
+
+/* ---------- Suche in „Letzte Änderungen“ ---------- */
+
+.changes-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+}
+.changes-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.changes-search .text-input {
+  flex: 1;
+  border: 0;
+  padding-left: 0;
+  background: none;
+  box-shadow: none;
+  outline: none;
+}
+.changes-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.changes-count {
+  margin: 0 0 8px;
+}
+.change-list mark {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--warning) 35%, transparent);
+  color: inherit;
+}

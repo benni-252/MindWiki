@@ -296,6 +296,8 @@ export interface WikiRpc {
 
   getChanges(articleId: number): ChangeEntry[]
   getRecentChanges(limit: number): RecentChange[]
+  /** Änderungen, in denen alle Suchwörter vorkommen (Artikel, Person, Beschreibung, Datum) – neueste zuerst */
+  searchChanges(query: string, limit: number): RecentChange[]
   /** Text (TipTap-JSON) vor einer Textänderung */
   getTextVersion(changeId: number): string | null
   restoreTextVersion(changeId: number): void
@@ -409,6 +411,7 @@ export const RPC_METHODS = [
   'resolveOutage',
   'getChanges',
   'getRecentChanges',
+  'searchChanges',
   'getTextVersion',
   'restoreTextVersion',
   'getUserName',
