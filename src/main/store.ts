@@ -42,6 +42,8 @@ export const TEXT_MERGE_MS = 15 * 60_000
 export const NAMING_AFTER_CREATE_MS = 5 * 60_000
 /** So viele frühere Textfassungen bleiben je Artikel gespeichert. */
 export const KEEP_TEXT_VERSIONS = 30
+/** Größter Versatz eines frei verschobenen Artikels (Pixel) */
+export const MAX_OFFSET = 100_000
 /** Die Suche im Verlauf schaut höchstens so viele (die neuesten) Einträge an */
 export const SEARCH_SCAN_LIMIT = 100_000
 
@@ -541,9 +543,11 @@ export class WikiStore {
               a.outage_since, a.outage_note,
               a.content_text <> '' AS has_text,
               COALESCE(c.total, 0) AS total, COALESCE(c.done, 0) AS done,
+              COALESCE(ly.dx, 0) AS dx, COALESCE(ly.dy, 0) AS dy,
               lc.at AS last_at, lc.author AS last_by, oc.at AS other_at, oc.author AS other_by
          FROM articles a
          LEFT JOIN articles d ON d.draft_of = a.id
+         LEFT JOIN article_layout ly ON ly.article_id = a.id
          -- Letzte Änderung je Artikel; bei gleicher Uhrzeit zählt die später eingetragene (wie im Verlauf)
          LEFT JOIN (
            SELECT article_id, at, author FROM (
@@ -583,6 +587,8 @@ export class WikiStore {
         checkTotal: r.total as number,
         checkDone: r.done as number,
         attachmentCount: r.attachment_count as number,
+        offsetX: r.dx as number,
+        offsetY: r.dy as number,
         outageSince: (r.outage_since as string | null) ?? null,
         outageNote: (r.outage_note as string | null) ?? null,
         lastChangeAt: (r.last_at as string | null) ?? null,
@@ -819,6 +825,35 @@ export class WikiStore {
     this.run('UPDATE articles SET collapsed = ? WHERE id = ?', collapsed ? 1 : 0, id)
   }
 
+  /**
+   * Frei gezogene Position in der Mind Map – als Versatz zur automatischen Anordnung, damit
+   * Unterartikel mitwandern und neue Artikel trotzdem ordentlich angeordnet werden. Wie das
+   * Ein- und Ausklappen keine inhaltliche Änderung: kein Verlauf, keine Freigabe.
+   */
+  setArticleOffset(id: number, dx: number, dy: number): void {
+    const article = this.requireLiveArticle(id)
+    if (article.parent_id == null) throw new WikiError('Die Wurzel bleibt in der Mitte – verschiebe stattdessen die Ansicht.')
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) throw new WikiError('Ungültige Position.')
+    const clamp = (v: number): number => Math.round(Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, v)))
+    const x = clamp(dx)
+    const y = clamp(dy)
+    if (x === 0 && y === 0) this.run('DELETE FROM article_layout WHERE article_id = ?', id)
+    else this.run('INSERT OR REPLACE INTO article_layout (article_id, dx, dy) VALUES (?, ?, ?)', id, x, y)
+  }
+
+  resetArticleLayout(id: number): number {
+    this.requireLiveArticle(id)
+    const result = this.db
+      .prepare(
+        `WITH RECURSIVE sub(id) AS (
+           SELECT ? UNION ALL SELECT a.id FROM articles a JOIN sub ON a.parent_id = sub.id
+         )
+         DELETE FROM article_layout WHERE article_id IN (SELECT id FROM sub)`
+      )
+      .run(id)
+    return Number(result.changes)
+  }
+
   /** true, wenn `candidate` gleich `ancestor` ist oder darunter hängt. */
   isInSubtree(candidate: number, ancestor: number): boolean {
     let current: number | null = candidate
@@ -847,6 +882,8 @@ export class WikiStore {
         id
       )
       this.run('UPDATE articles SET collapsed = 0 WHERE id = ?', newParentId)
+      // Unter dem neuen Elternartikel ordentlich einreihen; die Unterartikel behalten ihre Lage dazu
+      this.run('DELETE FROM article_layout WHERE article_id = ?', id)
       this.log(id, 'move', `Verschoben unter ${q(this.titleOf(newParentId))}`)
     })
   }

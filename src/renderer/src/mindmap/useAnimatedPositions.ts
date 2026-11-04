@@ -1,17 +1,28 @@
-import { useEffect, useRef, useState } from 'react'
-import type { LayoutNode } from './layout'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { LayoutNode, Point } from './layout'
 
-export type Point = { x: number; y: number }
+export type { Point }
 
 const reducedMotion = (): boolean => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 
 /**
  * Gleitet von den bisherigen zu den neuen Layout-Positionen. Neue Knoten wachsen aus
- * ihrem Elternknoten heraus.
+ * ihrem Elternknoten heraus. `place` setzt Knoten sofort an eine Stelle (z. B. dorthin,
+ * wo sie gerade losgelassen wurden) – die nächste Animation startet dann von dort.
  */
-export function useAnimatedPositions(target: Map<number, LayoutNode>, duration = 260): Map<number, Point> {
+export function useAnimatedPositions(
+  target: Map<number, LayoutNode>,
+  duration = 260
+): { positions: Map<number, Point>; place(points: Map<number, Point>): void } {
   const [positions, setPositions] = useState<Map<number, Point>>(() => new Map(target))
   const current = useRef(positions)
+
+  const place = useCallback((points: Map<number, Point>): void => {
+    const next = new Map(current.current)
+    for (const [id, p] of points) next.set(id, { x: p.x, y: p.y })
+    current.current = next
+    setPositions(next)
+  }, [])
 
   useEffect(() => {
     const from = current.current
@@ -56,5 +67,5 @@ export function useAnimatedPositions(target: Map<number, LayoutNode>, duration =
     return () => cancelAnimationFrame(frame)
   }, [target, duration])
 
-  return positions
+  return { positions, place }
 }

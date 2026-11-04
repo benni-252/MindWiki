@@ -18,7 +18,15 @@ import { useWiki } from '../store'
 import { formatWhen, impactOf, indexTree, isDeletedUser, isInSubtree, isUnseen } from '../treeUtils'
 import { ArticleNode, focusMap, type ArticleFlowNode } from './ArticleNode'
 import { ContextMenu } from './ContextMenu'
-import { estimateWidth, layoutMindMap, type LayoutArticle, type LayoutNode } from './layout'
+import {
+  applyOffsets,
+  descendantsOf,
+  estimateWidth,
+  layoutMindMap,
+  type LayoutArticle,
+  type LayoutNode,
+  type Point
+} from './layout'
 import { useAnimatedPositions } from './useAnimatedPositions'
 
 const nodeTypes = { article: ArticleNode }
@@ -120,7 +128,18 @@ export function MindMap(): React.JSX.Element {
     // sizeVersion: neu rechnen, sobald echte Breiten gemessen wurden
   }, [tree, sizeVersion])
 
-  const positions = useAnimatedPositions(layout)
+  // Frei gezogene Artikel: Versatz gegenüber der automatischen Anordnung (Unterartikel wandern mit)
+  const placed = useMemo(() => {
+    if (!tree) return layout
+    const offsets = new Map<number, Point>()
+    for (const a of tree.articles) if (a.offsetX || a.offsetY) offsets.set(a.id, { x: a.offsetX, y: a.offsetY })
+    return applyOffsets(layout, offsets)
+  }, [layout, tree])
+
+  const { positions, place } = useAnimatedPositions(placed)
+
+  // Beim Ziehen wandert der ganze Ast mit
+  const draggedBranch = useMemo(() => (drag ? descendantsOf(placed, drag.id) : null), [placed, drag?.id])
 
   const nodes = useMemo<ArticleFlowNode[]>(() => {
     if (!tree) return []
@@ -137,11 +156,19 @@ export function MindMap(): React.JSX.Element {
       if (!before || STATUS_RANK[status] > STATUS_RANK[before]) hidden.set(shown, status)
     }
     const result: ArticleFlowNode[] = []
-    for (const n of layout.values()) {
+    const dragFrom = drag ? (positions.get(drag.id) ?? placed.get(drag.id)) : undefined
+    const delta = drag && dragFrom ? { x: drag.x - dragFrom.x, y: drag.y - dragFrom.y } : null
+    for (const n of placed.values()) {
       const article = byId.get(n.id)
       if (!article) continue
       const key = String(n.id)
-      const pos = drag?.id === n.id ? drag : (positions.get(n.id) ?? n)
+      const base = positions.get(n.id) ?? n
+      const pos =
+        drag?.id === n.id
+          ? drag
+          : delta && draggedBranch?.has(n.id)
+            ? { x: base.x + delta.x, y: base.y + delta.y }
+            : base
       const unseen = isUnseen(article, seen)
       const approval = article.draftId != null ? 'pending' : tree.approvalRequired && !article.approved ? 'draft' : null
       const approvalNote =
@@ -166,7 +193,7 @@ export function MindMap(): React.JSX.Element {
         draggable: n.side !== 'root' && renamingId !== n.id,
         selectable: false,
         dragging: drag?.id === n.id,
-        zIndex: drag?.id === n.id ? 1000 : 0,
+        zIndex: drag?.id === n.id || draggedBranch?.has(n.id) ? 1000 : 0,
         data: {
           article,
           layout: n,
@@ -188,20 +215,23 @@ export function MindMap(): React.JSX.Element {
     }
     return result
     // sizeVersion: gemessene Größen in die Knoten übernehmen
-  }, [tree, layout, positions, drag, dropTarget, selectedId, renamingId, flashId, sizeVersion, seen, userName])
+  }, [tree, layout, placed, positions, drag, draggedBranch, dropTarget, selectedId, renamingId, flashId, sizeVersion, seen, userName])
 
   const edges = useMemo<Edge[]>(() => {
     if (!tree) return []
     const result: Edge[] = []
-    for (const n of layout.values()) {
+    // Seiten nach der tatsächlichen Lage: Ein frei nach links gezogener Artikel hängt links an
+    const handles = (from: number, to: number): Pick<Edge, 'sourceHandle' | 'targetHandle'> => {
+      const forward = (placed.get(to)?.x ?? 0) >= (placed.get(from)?.x ?? 0)
+      return { sourceHandle: forward ? 'r-s' : 'l-s', targetHandle: forward ? 'l-t' : 'r-t' }
+    }
+    for (const n of placed.values()) {
       if (n.parentId == null) continue
-      const right = n.side === 'right'
       result.push({
         id: `t${n.id}`,
         source: String(n.parentId),
         target: String(n.id),
-        sourceHandle: right ? 'r-s' : 'l-s',
-        targetHandle: right ? 'l-t' : 'r-t',
+        ...handles(n.parentId, n.id),
         selectable: false,
         focusable: false,
         className: 'branch-edge',
@@ -211,10 +241,6 @@ export function MindMap(): React.JSX.Element {
     // Verweise und Abhängigkeiten in eingeklappte Äste zeigen auf den sichtbaren Vorfahren.
     const { byId } = indexTree(tree)
     const visible = (id: number): number | null => visibleAncestor(byId, layout, id)
-    const handles = (from: number, to: number): Pick<Edge, 'sourceHandle' | 'targetHandle'> => {
-      const forward = (layout.get(to)?.x ?? 0) >= (layout.get(from)?.x ?? 0)
-      return { sourceHandle: forward ? 'r-s' : 'l-s', targetHandle: forward ? 'l-t' : 'r-t' }
-    }
 
     // Abhängigkeiten: Pfeil vom benötigten zum abhängigen Artikel, also in die Richtung, in die sich
     // eine Störung ausbreitet. Wege einer aktuellen Störung sind immer zu sehen, der Rest mit den Querverweisen.
@@ -272,7 +298,7 @@ export function MindMap(): React.JSX.Element {
       }
     }
     return result
-  }, [tree, layout, showLinks])
+  }, [tree, layout, placed, showLinks])
 
   const onNodesChange = useCallback((changes: NodeChange<ArticleFlowNode>[]) => {
     let resized = false
@@ -313,11 +339,34 @@ export function MindMap(): React.JSX.Element {
   const onNodeDragStop: OnNodeDrag<ArticleFlowNode> = useCallback(
     (_event, node) => {
       const target = dropTarget
-      setDrag(null)
+      const id = Number(node.id)
       setDropTarget(null)
-      if (target != null) void useWiki.getState().move(Number(node.id), target)
+      // Auf einen anderen Artikel gezogen: umhängen
+      if (target != null) {
+        setDrag(null)
+        void useWiki.getState().move(id, target)
+        return
+      }
+      // Ins Freie gezogen: dort lassen – samt Unterartikeln
+      const from = positions.get(id) ?? placed.get(id)
+      const article = tree ? indexTree(tree).byId.get(id) : undefined
+      const dx = from ? node.position.x - from.x : 0
+      const dy = from ? node.position.y - from.y : 0
+      if (!from || !article || Math.hypot(dx, dy) < 3) {
+        setDrag(null)
+        return
+      }
+      const landed = new Map<number, Point>([[id, { x: node.position.x, y: node.position.y }]])
+      for (const d of descendantsOf(placed, id)) {
+        const p = positions.get(d) ?? placed.get(d)
+        if (p) landed.set(d, { x: p.x + dx, y: p.y + dy })
+      }
+      // Sofort dort festhalten – kein Zurückspringen, bis die Wiki-Datei geantwortet hat
+      place(landed)
+      setDrag(null)
+      void useWiki.getState().placeArticle(id, article.offsetX + dx, article.offsetY + dy)
     },
-    [dropTarget]
+    [dropTarget, positions, placed, tree, place]
   )
 
   // ---------- Maus ----------
@@ -381,9 +430,9 @@ export function MindMap(): React.JSX.Element {
           void s.reorder(id, e.key === 'ArrowUp' ? -1 : 1)
           break
         }
-        const next = neighbour(layout, id, e.key)
+        const next = neighbour(placed, id, e.key)
         if (next != null) s.select(next, true)
-        else if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && layout.get(id)?.hiddenCount) void s.toggleCollapsed(id)
+        else if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown' && placed.get(id)?.hiddenCount) void s.toggleCollapsed(id)
         break
       }
       case 'Escape':
@@ -399,7 +448,7 @@ export function MindMap(): React.JSX.Element {
 
   useEffect(() => {
     if (!centerRequest) return
-    const n = layout.get(centerRequest.id)
+    const n = placed.get(centerRequest.id)
     if (!n) return
     // kurz warten, bis React Flow eine geänderte Kartenbreite (Panel geöffnet) bemerkt hat
     const t = setTimeout(() => {

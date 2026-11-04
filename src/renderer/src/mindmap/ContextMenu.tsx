@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, CircleCheck, TriangleAlert } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CircleCheck, LayoutGrid, TriangleAlert } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { IconPicker } from '../icons'
 import { useWiki } from '../store'
@@ -55,6 +55,17 @@ export function ContextMenu({ id, x, y, onClose }: Props): React.JSX.Element | n
   if (!article) return null
   const isRoot = article.parentId == null
   const hasChildren = (children.get(id)?.length ?? 0) > 0
+  // Ist in diesem Ast etwas frei verschoben?
+  const branchMoved = (() => {
+    const stack = [id]
+    while (stack.length > 0) {
+      const next = byId.get(stack.pop()!)
+      if (!next) continue
+      if (next.offsetX || next.offsetY) return true
+      stack.push(...(children.get(next.id) ?? []).map((c) => c.id))
+    }
+    return false
+  })()
   const s = useWiki.getState()
 
   const action = (fn: () => unknown) => () => {
@@ -123,6 +134,12 @@ export function ContextMenu({ id, x, y, onClose }: Props): React.JSX.Element | n
           {hasChildren && !isRoot && (
             <button onClick={action(() => s.toggleCollapsed(id))}>
               {article.collapsed ? 'Ast aufklappen' : 'Ast einklappen'} <kbd>Leertaste</kbd>
+            </button>
+          )}
+          {branchMoved && (
+            <button onClick={action(() => s.resetLayout(id))}>
+              {isRoot ? 'Ganze Mind Map automatisch anordnen' : hasChildren ? 'Ast automatisch anordnen' : 'Automatisch anordnen'}{' '}
+              <LayoutGrid size={15} />
             </button>
           )}
           {!isRoot && (

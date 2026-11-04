@@ -2,6 +2,20 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.10.0
+
+**Neu: Artikel in der Mind Map frei verschieben**
+- Artikel lassen sich mit der Maus an jede beliebige Stelle ziehen – ihre Unterartikel wandern mit. Neue Unterartikel reihen sich ordentlich daneben ein.
+- Auf einen anderen Artikel gezogen, wird ein Artikel wie bisher dort umgehängt.
+- Die Anordnung wird in der Wiki-Datei gespeichert und gilt für alle, die das Wiki benutzen.
+- Zurück zur automatischen Anordnung: Rechtsklick › *Ast automatisch anordnen* oder für alles *Ansicht › Mind Map automatisch anordnen*.
+
+**Download**
+- `MindWiki-Setup-1.10.0.exe` – Installer (mit automatischen Updates)
+- `MindWiki-1.10.0-portable.exe` – ohne Installation starten
+
+Ältere Versionen (1.8/1.9) können dieselbe Wiki-Datei weiter öffnen – sie zeigen nur die automatische Anordnung.
+
 ## 1.9.0
 
 **Neu: Suche in den letzten Änderungen**

@@ -15,6 +15,9 @@ export interface ArticleSummary {
   checkDone: number
   /** Zahl der Anhänge (im eigenen Entwurf: die des Entwurfs) */
   attachmentCount: number
+  /** In der Mind Map frei verschoben: Versatz gegenüber der automatischen Anordnung (Unterartikel wandern mit) */
+  offsetX: number
+  offsetY: number
   /** Beginn einer gemeldeten Störung, null wenn in Betrieb */
   outageSince: string | null
   /** Kurze Notiz zur Störung (Ursache, Ticket …) */
@@ -283,6 +286,10 @@ export interface WikiRpc {
   setArticleColor(id: number, color: string | null): void
   setArticleIcon(id: number, icon: string | null): void
   setCollapsed(id: number, collapsed: boolean): void
+  /** Artikel in der Mind Map frei platzieren (Versatz zur automatischen Anordnung; 0/0 = automatisch) */
+  setArticleOffset(id: number, dx: number, dy: number): void
+  /** Artikel und alle darunter zurück an ihren automatischen Platz; liefert die Zahl der betroffenen */
+  resetArticleLayout(id: number): number
   moveArticle(id: number, newParentId: number): void
   reorderArticle(id: number, direction: -1 | 1): void
   deleteArticle(id: number): void
@@ -401,6 +408,8 @@ export const RPC_METHODS = [
   'setArticleColor',
   'setArticleIcon',
   'setCollapsed',
+  'setArticleOffset',
+  'resetArticleLayout',
   'moveArticle',
   'reorderArticle',
   'deleteArticle',
@@ -507,6 +516,7 @@ export type MenuAction =
   | 'export-pdf'
   | 'save'
   | 'toggle-links'
+  | 'auto-layout'
   | 'fit'
   | 'shortcuts'
   | 'about'
