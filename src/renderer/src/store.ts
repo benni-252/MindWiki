@@ -97,6 +97,10 @@ interface State {
   applyTemplate(id: number, templateId: string): Promise<void>
   toggleCollapsed(id: number): Promise<void>
   move(id: number, newParentId: number): Promise<void>
+  /** Artikel in der Mind Map frei platzieren (Versatz zur automatischen Anordnung) */
+  placeArticle(id: number, offsetX: number, offsetY: number): Promise<void>
+  /** Artikel samt Ast zurück an den automatischen Platz (Wurzel: ganze Mind Map, mit Nachfrage) */
+  resetLayout(id: number): Promise<void>
   reorder(id: number, direction: -1 | 1): Promise<void>
   remove(id: number): Promise<void>
   addDependency(articleId: number, dependsOnId: number): Promise<void>
@@ -464,6 +468,34 @@ export const useWiki = create<State>((set, get) => {
     async move(id, newParentId) {
       await mutate(() => wiki.moveArticle(id, newParentId))
       set({ centerRequest: { id, nonce: ++nonce, flash: true } })
+    },
+
+    async placeArticle(id, offsetX, offsetY) {
+      // Sofort anzeigen (die Mind Map hält den Ast schon dort fest), dann speichern
+      const tree = get().tree
+      if (tree) {
+        const x = Math.round(offsetX)
+        const y = Math.round(offsetY)
+        set({ tree: { ...tree, articles: tree.articles.map((a) => (a.id === id ? { ...a, offsetX: x, offsetY: y } : a)) } })
+      }
+      await mutate(() => wiki.setArticleOffset(id, offsetX, offsetY))
+    },
+
+    async resetLayout(id) {
+      const tree = get().tree
+      if (!tree) return
+      const whole = id === tree.rootId
+      if (whole) {
+        const ok = await get().confirm({
+          title: 'Mind Map automatisch anordnen?',
+          message:
+            'Alle frei verschobenen Artikel kommen zurück an ihren automatischen Platz. Das gilt für alle, die dieses Wiki benutzen.',
+          confirmLabel: 'Automatisch anordnen'
+        })
+        if (!ok) return
+      }
+      const count = await mutate(() => wiki.resetArticleLayout(id))
+      if (count === 0) get().toast(whole ? 'Es war kein Artikel frei verschoben.' : 'Hier war nichts verschoben.')
     },
 
     async reorder(id, direction) {

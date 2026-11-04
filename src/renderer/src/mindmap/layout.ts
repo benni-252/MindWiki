@@ -158,3 +158,53 @@ export function layoutMindMap(
   layoutSide(left, 'left')
   return result
 }
+
+export interface Point {
+  x: number
+  y: number
+}
+
+/**
+ * Frei gezogene Artikel: Jeder Knoten wandert um seinen eigenen Versatz und den aller Vorfahren –
+ * so bleibt ein verschobener Ast beisammen, und neue Unterartikel landen ordentlich daneben.
+ */
+export function applyOffsets(layout: Map<number, LayoutNode>, offsets: Map<number, Point>): Map<number, LayoutNode> {
+  if (offsets.size === 0) return layout
+  const total = new Map<number, Point>()
+  const shiftOf = (id: number): Point => {
+    const known = total.get(id)
+    if (known) return known
+    const node = layout.get(id)
+    const own = offsets.get(id) ?? { x: 0, y: 0 }
+    const parent = node?.parentId != null && layout.has(node.parentId) ? shiftOf(node.parentId) : { x: 0, y: 0 }
+    const sum = { x: own.x + parent.x, y: own.y + parent.y }
+    total.set(id, sum)
+    return sum
+  }
+  const result = new Map<number, LayoutNode>()
+  for (const [id, node] of layout) {
+    const s = shiftOf(id)
+    result.set(id, s.x === 0 && s.y === 0 ? node : { ...node, x: node.x + s.x, y: node.y + s.y })
+  }
+  return result
+}
+
+/** Alle sichtbaren Nachfahren eines Knotens (ohne ihn selbst). */
+export function descendantsOf(layout: Map<number, LayoutNode>, id: number): Set<number> {
+  const children = new Map<number, number[]>()
+  for (const node of layout.values()) {
+    if (node.parentId == null) continue
+    const list = children.get(node.parentId) ?? []
+    list.push(node.id)
+    children.set(node.parentId, list)
+  }
+  const found = new Set<number>()
+  const stack = [...(children.get(id) ?? [])]
+  while (stack.length > 0) {
+    const next = stack.pop()!
+    if (found.has(next)) continue
+    found.add(next)
+    stack.push(...(children.get(next) ?? []))
+  }
+  return found
+}

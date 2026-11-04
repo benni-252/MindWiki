@@ -13,6 +13,7 @@ const SHORTCUTS: [string, string][] = [
   ['Pfeiltasten', 'Zwischen Artikeln wechseln'],
   ['Alt+↑ / Alt+↓', 'Reihenfolge ändern'],
   ['Ziehen auf anderen Artikel', 'Umhängen'],
+  ['Ziehen ins Freie', 'Frei platzieren (Unterartikel wandern mit)'],
   ['Esc', 'Artikel schließen'],
   ['Allgemein', ''],
   ['Strg+K', 'Suchen'],

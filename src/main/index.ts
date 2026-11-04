@@ -80,6 +80,7 @@ function buildMenu(): void {
       submenu: [
         item('Ganze Mind Map zeigen', 'fit', 'CmdOrCtrl+0'),
         item('Querverweise ein/aus', 'toggle-links', 'CmdOrCtrl+L'),
+        item('Mind Map automatisch anordnen', 'auto-layout'),
         item('Störungen und Auswirkungen…', 'outages'),
         { type: 'separator' },
         { role: 'zoomIn', label: 'Schrift größer', accelerator: 'CmdOrCtrl+=' },

@@ -58,6 +58,9 @@ export async function runAction(action: MenuAction): Promise<void> {
         s.setDialog('update')
         s.setUpdate(await wiki.checkForUpdates())
         break
+      case 'auto-layout':
+        if (s.tree) await s.resetLayout(s.tree.rootId)
+        break
       case 'toggle-links':
         s.toggleLinks()
         break

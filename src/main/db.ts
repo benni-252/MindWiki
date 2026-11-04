@@ -145,6 +145,20 @@ export const MIGRATIONS: string[] = [
   `
 ]
 
+/**
+ * Zusatztabellen ohne Versionssprung: Ältere MindWiki-Versionen kennen sie nicht, stören sich
+ * aber auch nicht daran und können dieselbe Datei weiter öffnen. Nur für Daten, ohne die das
+ * Wiki vollständig bleibt (z. B. die frei gezogene Anordnung der Mind Map).
+ */
+export const OPTIONAL_TABLES = `
+  -- Frei verschobene Artikel: Versatz gegenüber der automatischen Anordnung (Unterartikel wandern mit)
+  CREATE TABLE IF NOT EXISTS article_layout (
+    article_id INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
+    dx REAL NOT NULL,
+    dy REAL NOT NULL
+  );
+`
+
 export class NotAWikiError extends Error {}
 
 /** Wartezeit bei gesperrter Datei; MINDWIKI_BUSY_TIMEOUT_MS verkürzt sie in automatischen Tests. */
@@ -206,6 +220,7 @@ export function openDatabase(file: string, rootTitle: string): DatabaseSync {
       }
     }
 
+    db.exec(OPTIONAL_TABLES)
     db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('app', ?)").run(APP_MARKER)
     // Jedes Wiki hat einen Admin; anfangs mit dem Passwort „admin“
     const users = db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }
