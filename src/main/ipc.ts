@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { cleanAttachmentName, formatBytes, isBlockedAttachment, MAX_ATTACHMENT_BYTES } from '../shared/attachments'
-import { RPC_METHODS, type Role, type WikiRpc } from '../shared/types'
+import { RPC_METHODS, TASK_METHODS, type Role, type TaskRpc, type WikiRpc } from '../shared/types'
 import { backupTo, NotAWikiError } from './db'
 import { friendlyDbError } from './dbErrors'
 import { articleToHtml } from './exportHtml'
@@ -58,8 +58,10 @@ type FileOps =
   | 'changePassword'
 
 // Bricht die Typprüfung, wenn WikiStore eine Datenmethode der API nicht (passend) anbietet.
-const storeImplementsRpc = (s: WikiStore): Omit<WikiRpc, FileOps> => s
+// Die Aufgaben stecken in WikiStore.tasks.
+const storeImplementsRpc = (s: WikiStore): Omit<WikiRpc, FileOps | keyof TaskRpc> => s
 void storeImplementsRpc
+const TASK_OPS = new Set<string>(TASK_METHODS)
 
 /** Ohne Anmeldung erlaubt: Datei wählen, Anmelden, Updates. */
 const PUBLIC = new Set<string>([
@@ -416,8 +418,9 @@ export function registerIpc(
           if (name === 'saveImage' && (args[1] as Uint8Array).byteLength > MAX_IMAGE_BYTES) {
             throw new Error('Das Bild ist größer als 25 MB.')
           }
-          const store = currentStore() as unknown as Record<string, (...a: unknown[]) => unknown>
-          result = store[name](...args)
+          const store = currentStore()
+          const target = (TASK_OPS.has(name) ? store.tasks : store) as unknown as Record<string, (...a: unknown[]) => unknown>
+          result = target[name](...args)
         }
         // Fehler der Wiki-Datei (gesperrt, Netzlaufwerk weg …) verständlich melden
         return result instanceof Promise

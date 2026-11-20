@@ -78,6 +78,9 @@ function buildMenu(): void {
     {
       label: 'Ansicht',
       submenu: [
+        item('Mind Map', 'show-map', 'CmdOrCtrl+1'),
+        item('Aufgaben', 'show-tasks', 'CmdOrCtrl+2'),
+        { type: 'separator' },
         item('Ganze Mind Map zeigen', 'fit', 'CmdOrCtrl+0'),
         item('Querverweise ein/aus', 'toggle-links', 'CmdOrCtrl+L'),
         item('Mind Map automatisch anordnen', 'auto-layout'),

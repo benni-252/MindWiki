@@ -2,6 +2,24 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.11.0
+
+**Neu: Reiter „Aufgaben“ – eine To-do-Liste wie der Planner in Teams**
+- Oben neben „Mind Map“ gibt es den Reiter **Aufgaben** (Strg+2, zurück mit Strg+1). Die Zahl am Reiter zeigt deine offenen Aufgaben – rot, wenn etwas überfällig ist.
+- **Board mit Buckets:** Spalten frei anlegen, umbenennen, verschieben und löschen. Aufgaben als Karten mit der Maus in einen anderen Bucket oder an eine andere Stelle ziehen. Erledigte Aufgaben klappen unten in jeder Spalte zusammen.
+- **Karten wie im Planner:** Bezeichnungen (farbige Etiketten), Fortschritt per Kreis abhaken, Priorität (Dringend, Wichtig, Mittel, Niedrig), Fälligkeit (rot, wenn überfällig), Checkliste „2/5“, Kommentare und zugewiesene Personen. Auf Wunsch zeigt die Karte die Notizen oder die Checkliste zum direkten Abhaken.
+- **Details:** Titel, Zuweisen an Benutzer des Wikis, Bezeichnungen, Bucket, Fortschritt, Priorität, Start- und Fälligkeitsdatum, Notizen, Checkliste, Kommentare – alles speichert sofort. Aufgaben lassen sich kopieren und löschen.
+- **Gruppieren nach** Bucket, Fortschritt, Priorität, Zugewiesen an oder Fälligkeitsdatum – auch dort per Ziehen ändern (z. B. in „Erledigt“ oder „Morgen“ ziehen).
+- **Filter:** Suchtext (Strg+F), „Mir zugewiesen“, Fälligkeit, Priorität, Bezeichnungen und Personen. Dazu eine **Listenansicht** mit sortierbaren Spalten.
+- **Mit dem Wiki verknüpft:** Eine Aufgabe kann auf einen Artikel zeigen (z. B. „Laufwerk vergrößern“ → SRV-SQL01). Ein Klick öffnet ihn in der Mind Map; im Artikel stehen seine Aufgaben, neue lassen sich dort direkt anlegen.
+- Die Aufgaben liegen in der Wiki-Datei – alle am Netzlaufwerk sehen dieselben, Änderungen anderer erscheinen nach ein bis zwei Sekunden. Im Beispiel-Wiki gibt es ein paar Beispiel-Aufgaben.
+
+**Download**
+- `MindWiki-Setup-1.11.0.exe` – Installer (mit automatischen Updates)
+- `MindWiki-1.11.0-portable.exe` – ohne Installation starten
+
+Keine Änderung an der bisherigen Datenbank-Struktur – ältere Versionen (ab 1.8) öffnen dieselbe Wiki-Datei weiter, sehen die Aufgaben aber nicht.
+
 ## 1.10.0
 
 **Neu: Artikel in der Mind Map frei verschieben**

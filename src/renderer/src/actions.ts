@@ -59,13 +59,22 @@ export async function runAction(action: MenuAction): Promise<void> {
         s.setUpdate(await wiki.checkForUpdates())
         break
       case 'auto-layout':
+        s.setView('map')
         if (s.tree) await s.resetLayout(s.tree.rootId)
         break
       case 'toggle-links':
+        s.setView('map')
         s.toggleLinks()
         break
       case 'fit':
+        s.setView('map')
         s.requestFit()
+        break
+      case 'show-map':
+        s.setView('map')
+        break
+      case 'show-tasks':
+        if (s.session) s.setView('tasks')
         break
     }
   } catch (err) {

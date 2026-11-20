@@ -2,7 +2,9 @@ import {
   ArrowDownCircle,
   ChevronDown,
   KeyRound,
+  ListTodo,
   LogOut,
+  Network,
   UserRound,
   Users,
   History,
@@ -21,8 +23,49 @@ import { runAction } from './actions'
 import { ROLE_LABEL } from '../../shared/types'
 import { pendingApprovals } from './dialogs/ApprovalsDialog'
 import { useWiki } from './store'
+import { isAssigned, isOverdue } from './tasks/board'
+import { todayString } from './tasks/dates'
 import { TemplateList } from './TemplateList'
 import { impactOf, indexTree, unseenArticles } from './treeUtils'
+
+/** Reiter „Mind Map“ und „Aufgaben“; die Zahl zeigt meine offenen Aufgaben (rot, wenn etwas überfällig ist). */
+function ViewTabs(): React.JSX.Element {
+  const view = useWiki((s) => s.view)
+  const board = useWiki((s) => s.board)
+  const userName = useWiki((s) => s.userName)
+  const today = todayString()
+  const mine = (board?.tasks ?? []).filter((t) => t.progress !== 'done' && isAssigned(t, userName))
+  const late = mine.filter((t) => isOverdue(t, today)).length
+  const title =
+    mine.length === 0
+      ? 'Aufgaben (Strg+2)'
+      : `${mine.length} ${mine.length === 1 ? 'offene Aufgabe' : 'offene Aufgaben'} für dich${late > 0 ? `, ${late} überfällig` : ''} (Strg+2)`
+  return (
+    <nav className="view-tabs" aria-label="Ansicht">
+      <button
+        className={`view-tab ${view === 'map' ? 'active' : ''}`}
+        aria-current={view === 'map' ? 'page' : undefined}
+        title="Mind Map (Strg+1)"
+        aria-label="Mind Map"
+        onClick={() => void runAction('show-map')}
+      >
+        <Network size={16} />
+        <span className="tab-label">Mind Map</span>
+      </button>
+      <button
+        className={`view-tab ${view === 'tasks' ? 'active' : ''}`}
+        aria-current={view === 'tasks' ? 'page' : undefined}
+        title={title}
+        aria-label={mine.length > 0 ? `Aufgaben (${mine.length} offen für dich)` : 'Aufgaben'}
+        onClick={() => void runAction('show-tasks')}
+      >
+        <ListTodo size={16} />
+        <span className="tab-label">Aufgaben</span>
+        {mine.length > 0 && <span className={`tab-count ${late > 0 ? 'late' : ''}`}>{mine.length > 99 ? '99+' : mine.length}</span>}
+      </button>
+    </nav>
+  )
+}
 
 /** Plus-Knopf: neuer Unterartikel zum ausgewählten Artikel, leer oder aus einer Vorlage. */
 function AddMenu(): React.JSX.Element {
@@ -221,6 +264,7 @@ export function TopBar(): React.JSX.Element {
   const tree = useWiki((s) => s.tree)
   const dbInfo = useWiki((s) => s.dbInfo)
   const showLinks = useWiki((s) => s.showLinks)
+  const view = useWiki((s) => s.view)
   const rootTitle = tree ? indexTree(tree).byId.get(tree.rootId)?.title : ''
 
   return (
@@ -239,6 +283,8 @@ export function TopBar(): React.JSX.Element {
         </div>
       </div>
 
+      <ViewTabs />
+
       <button className="search-trigger" onClick={() => void runAction('search')}>
         <Search size={15} />
         <span>Suchen…</span>
@@ -249,18 +295,22 @@ export function TopBar(): React.JSX.Element {
       <UpdateIndicator />
 
       <div className="topbar-actions">
-        <AddMenu />
-        <button
-          className={`icon-btn ${showLinks ? 'active' : ''}`}
-          title="Querverweise ein/aus (Strg+L)"
-          aria-pressed={showLinks}
-          onClick={() => void runAction('toggle-links')}
-        >
-          <Link2 size={18} />
-        </button>
-        <button className="icon-btn" title="Ganze Mind Map zeigen (Strg+0)" onClick={() => void runAction('fit')}>
-          <Scan size={18} />
-        </button>
+        {view === 'map' && (
+          <>
+            <AddMenu />
+            <button
+              className={`icon-btn ${showLinks ? 'active' : ''}`}
+              title="Querverweise ein/aus (Strg+L)"
+              aria-pressed={showLinks}
+              onClick={() => void runAction('toggle-links')}
+            >
+              <Link2 size={18} />
+            </button>
+            <button className="icon-btn" title="Ganze Mind Map zeigen (Strg+0)" onClick={() => void runAction('fit')}>
+              <Scan size={18} />
+            </button>
+          </>
+        )}
         <ApprovalsButton />
         <ChangesButton />
         <button className="icon-btn" title="Papierkorb" onClick={() => void runAction('trash')}>

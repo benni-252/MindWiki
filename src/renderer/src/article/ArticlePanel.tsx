@@ -22,6 +22,7 @@ import { errorMessage, wiki } from '../api'
 import { ChecklistSection } from '../checklist/ChecklistSection'
 import { IconPicker, NodeIcon } from '../icons'
 import { useWiki } from '../store'
+import { ArticleTasks } from '../tasks/ArticleTasks'
 import { indexTree, isDeletedUser, pathTo, seenAt } from '../treeUtils'
 import { ApprovalBanner } from './ApprovalBanner'
 import { Attachments } from './Attachments'
@@ -407,6 +408,7 @@ export function ArticlePanel({ id }: { id: number }): React.JSX.Element {
                 articleId={article.id}
                 readMode={contentReadOnly}
               />
+              <ArticleTasks articleId={id} />
               <Backlinks id={id} />
               <History id={id} newSince={newSince} />
               <p className="meta">

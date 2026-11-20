@@ -272,11 +272,172 @@ export interface SaveResult {
   treeChanged: boolean
 }
 
+// ---------- Aufgaben (Reiter „Aufgaben“, wie der Planner in Teams) ----------
+
+/** Nicht begonnen · In Bearbeitung · Erledigt */
+export type TaskProgress = 'open' | 'active' | 'done'
+/** Dringend · Wichtig · Mittel · Niedrig */
+export type TaskPriority = 'urgent' | 'important' | 'medium' | 'low'
+/** Was die Karte zusätzlich zeigt */
+export type TaskPreview = 'notes' | 'checklist' | null
+
+/** Spalte auf dem Board */
+export interface TaskBucket {
+  id: number
+  name: string
+  position: number
+}
+
+/** Farbige Bezeichnung, gilt für alle Aufgaben */
+export interface TaskLabel {
+  id: number
+  name: string
+  /** Farbe, siehe LABEL_COLORS in src/shared/tasks.ts */
+  color: string
+}
+
+export interface TaskCheckItem {
+  id: number
+  taskId: number
+  text: string
+  checked: boolean
+}
+
+export interface Task {
+  id: number
+  bucketId: number
+  title: string
+  notes: string
+  progress: TaskProgress
+  priority: TaskPriority
+  /** Kalendertag „JJJJ-MM-TT“ */
+  startDate: string | null
+  dueDate: string | null
+  /** Verknüpfter Wiki-Artikel */
+  articleId: number | null
+  /** Titel des verknüpften Artikels; null, wenn er im Papierkorb liegt */
+  articleTitle: string | null
+  preview: TaskPreview
+  position: number
+  createdBy: string | null
+  createdAt: string
+  completedBy: string | null
+  completedAt: string | null
+  /** Zugewiesene Benutzer (Benutzernamen) */
+  assignees: string[]
+  labelIds: number[]
+  checklist: TaskCheckItem[]
+  commentCount: number
+}
+
+export interface TaskComment {
+  id: number
+  taskId: number
+  author: string
+  at: string
+  text: string
+}
+
+export interface TaskUser {
+  username: string
+  deleted: boolean
+}
+
+/** Alles, was der Reiter „Aufgaben“ zeigt (ohne Kommentare) */
+export interface TaskBoard {
+  buckets: TaskBucket[]
+  tasks: Task[]
+  labels: TaskLabel[]
+  /** Wem Aufgaben zugewiesen werden können (gelöschte nur zur Anzeige) */
+  users: TaskUser[]
+}
+
+export interface TaskPatch {
+  title?: string
+  notes?: string
+  progress?: TaskProgress
+  priority?: TaskPriority
+  startDate?: string | null
+  dueDate?: string | null
+  articleId?: number | null
+  preview?: TaskPreview
+  /** In einen anderen Bucket (dort oben einreihen) */
+  bucketId?: number
+}
+
+/** Startwerte einer neuen Aufgabe (z. B. beim Anlegen in der Spalte „Dringend“) */
+export interface NewTaskOptions {
+  progress?: TaskProgress
+  priority?: TaskPriority
+  dueDate?: string | null
+  assignees?: string[]
+  articleId?: number | null
+}
+
+/** Aufgaben: alle angemeldeten Benutzer dürfen sie anlegen und ändern (ohne Freigabe, ohne Verlauf). */
+export interface TaskRpc {
+  getTaskBoard(): TaskBoard
+  createBucket(name: string): number
+  renameBucket(id: number, name: string): void
+  moveBucket(id: number, direction: -1 | 1): void
+  /** Löscht den Bucket mit all seinen Aufgaben */
+  deleteBucket(id: number): void
+  /** Neue Aufgabe oben im Bucket; ohne Bucket in den ersten (der notfalls angelegt wird). Liefert die ID. */
+  createTask(bucketId: number | null, title: string, options?: NewTaskOptions): number
+  updateTask(id: number, patch: TaskPatch): void
+  /** In `bucketId` vor `beforeId` einreihen (null: ans Ende) */
+  moveTask(id: number, bucketId: number, beforeId: number | null): void
+  deleteTask(id: number): void
+  /** Kopie mit Checkliste, Bezeichnungen und Zuweisungen (ohne Kommentare); liefert die ID */
+  copyTask(id: number): number
+  setTaskAssignees(id: number, usernames: string[]): void
+  createTaskLabel(name: string, color: string): number
+  updateTaskLabel(id: number, name: string, color: string): void
+  deleteTaskLabel(id: number): void
+  setTaskLabels(taskId: number, labelIds: number[]): void
+  addTaskCheckItem(taskId: number, text: string): number
+  updateTaskCheckItem(id: number, text: string): void
+  setTaskCheckItemChecked(id: number, checked: boolean): void
+  deleteTaskCheckItem(id: number): void
+  moveTaskCheckItem(id: number, direction: -1 | 1): void
+  /** Neueste zuerst */
+  getTaskComments(taskId: number): TaskComment[]
+  addTaskComment(taskId: number, text: string): number
+  /** Nur eigene Kommentare */
+  deleteTaskComment(id: number): void
+}
+
+export const TASK_METHODS = [
+  'getTaskBoard',
+  'createBucket',
+  'renameBucket',
+  'moveBucket',
+  'deleteBucket',
+  'createTask',
+  'updateTask',
+  'moveTask',
+  'deleteTask',
+  'copyTask',
+  'setTaskAssignees',
+  'createTaskLabel',
+  'updateTaskLabel',
+  'deleteTaskLabel',
+  'setTaskLabels',
+  'addTaskCheckItem',
+  'updateTaskCheckItem',
+  'setTaskCheckItemChecked',
+  'deleteTaskCheckItem',
+  'moveTaskCheckItem',
+  'getTaskComments',
+  'addTaskComment',
+  'deleteTaskComment'
+] as const satisfies readonly (keyof TaskRpc)[]
+
 /**
  * Alle Funktionen, die der Main-Prozess per IPC anbietet (synchron implementiert).
  * Die Oberfläche sieht sie als Promise-Varianten, siehe WikiApi.
  */
-export interface WikiRpc {
+export interface WikiRpc extends TaskRpc {
   getTree(): TreeData
   getArticle(id: number): Article | null
   createArticle(parentId: number, title: string, afterId?: number | null, templateId?: string | null): number
@@ -490,7 +651,8 @@ export const RPC_METHODS = [
   'holdClose',
   'backupDb',
   'revealDb',
-  'confirmClose'
+  'confirmClose',
+  ...TASK_METHODS
 ] as const satisfies readonly (keyof WikiRpc)[]
 
 // Bricht die Typprüfung, wenn eine Methode in RPC_METHODS fehlt.
@@ -518,6 +680,8 @@ export type MenuAction =
   | 'toggle-links'
   | 'auto-layout'
   | 'fit'
+  | 'show-map'
+  | 'show-tasks'
   | 'shortcuts'
   | 'about'
 

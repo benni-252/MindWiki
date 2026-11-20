@@ -398,6 +398,134 @@ export function fillSampleWiki(store: WikiStore): void {
   store.author = 'Anna'
 }
 
+/**
+ * Beispiel-Aufgaben für den Reiter „Aufgaben“ (Fälligkeiten ab heute gerechnet). Nur einmal je Datei
+ * und nur, solange es dort noch keine Buckets gibt – so bekommen auch ältere Beispiel-Wikis welche.
+ */
+export function fillSampleTasks(store: WikiStore, now = new Date()): boolean {
+  if (store.db.prepare("SELECT 1 FROM meta WHERE key = 'sample_tasks'").get()) return false
+  if ((store.db.prepare('SELECT COUNT(*) AS n FROM task_buckets').get() as { n: number }).n > 0) return false
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  const day = (offset: number): string => {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset)
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  }
+  const articles = store.getTree().articles
+  const article = (title: string): number | null => articles.find((a) => a.title === title)?.id ?? null
+  const users = new Set(store.listUsers().filter((u) => !u.deleted).map((u) => u.username))
+  const who = (...names: string[]): string[] => names.filter((n) => users.has(n))
+  const t = store.tasks
+  const author = store.author
+  store.author = 'Anna'
+  try {
+    const todo = t.createBucket('Zu erledigen')
+    const week = t.createBucket('Diese Woche')
+    const waiting = t.createBucket('Warten auf andere')
+    const server = t.createTaskLabel('Server', 'blue')
+    const network = t.createTaskLabel('Netzwerk', 'teal')
+    const workplace = t.createTaskLabel('Arbeitsplatz', 'green')
+    const purchase = t.createTaskLabel('Einkauf', 'orange')
+    const security = t.createTaskLabel('Sicherheit', 'red')
+
+    // Neue Aufgaben stehen oben – für das Beispiel der Reihe nach unten anhängen
+    const add = (
+      bucket: number,
+      title: string,
+      options: Parameters<typeof t.createTask>[2],
+      labels: number[],
+      notes = '',
+      checklist: [string, boolean][] = []
+    ): number => {
+      const id = t.createTask(bucket, title, options)
+      t.moveTask(id, bucket, null)
+      t.setTaskLabels(id, labels)
+      if (notes) t.updateTask(id, { notes })
+      for (const [text, done] of checklist) {
+        const item = t.addTaskCheckItem(id, text)
+        if (done) t.setTaskCheckItemChecked(item, true)
+      }
+      return id
+    }
+
+    add(
+      todo,
+      'Firmware des Core-Switch aktualisieren',
+      { priority: 'important', dueDate: day(8), assignees: who('Ben'), articleId: article('Core-Switch') },
+      [network],
+      'Nur im Wartungsfenster (Mi 20–23 Uhr). Vorher die Konfiguration sichern.',
+      [
+        ['Konfiguration sichern', false],
+        ['Firmware herunterladen und Prüfsumme vergleichen', false],
+        ['Update einspielen', false],
+        ['Ports und VLANs testen', false]
+      ]
+    )
+    add(
+      todo,
+      'Passwort-Manager für das Team auswählen',
+      { priority: 'low' },
+      [security],
+      'Zwei bis drei Kandidaten vergleichen, Entscheidung im nächsten Teammeeting.'
+    )
+
+    const disk = add(
+      week,
+      'Laufwerk D: auf SRV-SQL01 vergrößern',
+      { priority: 'urgent', progress: 'active', dueDate: day(0), assignees: who('Anna', 'Ben'), articleId: article('SRV-SQL01') },
+      [server],
+      '',
+      [
+        ['Snapshot der VM anlegen', true],
+        ['Datenträger in der VM vergrößern', true],
+        ['Partition in Windows erweitern', false],
+        ['Dienste der Warenwirtschaft prüfen', false],
+        ['Störung im Wiki beheben', false]
+      ]
+    )
+    t.updateTask(disk, { preview: 'checklist', startDate: day(-1) })
+    add(
+      week,
+      'Arbeitsplatz für neue Kollegin einrichten',
+      { dueDate: day(2), assignees: who('Ben'), articleId: article('Neuer Mitarbeiter') },
+      [workplace],
+      'Start am Montag, Platz 1.14 im 1. OG.',
+      [
+        ['Notebook installieren', false],
+        ['Benutzerkonto und Postfach anlegen', false],
+        ['Telefon einrichten', false]
+      ]
+    )
+    add(
+      week,
+      'VPN-Zertifikat erneuern',
+      { priority: 'important', dueDate: day(-1), assignees: who('Anna'), articleId: article('VPN') },
+      [security]
+    )
+
+    add(
+      waiting,
+      'Angebot für größeres Backup-NAS einholen',
+      { priority: 'low', dueDate: day(14), assignees: who('Anna'), articleId: article('Backup-NAS') },
+      [purchase],
+      'Beim Systemhaus angefragt (20 TB, zwei Netzteile). Rückmeldung kommt bis Monatsende.'
+    )
+    const toner = add(
+      waiting,
+      'Toner für Drucker 1. OG bestellen',
+      { dueDate: day(-3), assignees: who('Ben'), articleId: article('Drucker 1. OG') },
+      [purchase]
+    )
+
+    store.author = 'Ben'
+    t.updateTask(toner, { progress: 'done' })
+    t.addTaskComment(disk, 'Snapshot ist angelegt, der Datenträger ist auf 200 GB vergrößert. Partition mache ich nach der Mittagspause.')
+    store.db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('sample_tasks', '1')").run()
+    return true
+  } finally {
+    store.author = author
+  }
+}
+
 /** Legt das Beispiel-Wiki als eigene Datei an, falls es sie noch nicht gibt, und liefert den Pfad. */
 export function ensureSampleWiki(file: string): string {
   if (fs.existsSync(file) && fs.statSync(file).size > 0) return file
@@ -408,6 +536,7 @@ export function ensureSampleWiki(file: string): string {
     // Zugänge für die Personen im Beispiel (Passwort jeweils „demo“)
     store.createUser('Anna', 'demo', 'editor')
     store.createUser('Ben', 'demo', 'author')
+    fillSampleTasks(store)
     db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('sample', '1')").run()
   } finally {
     db.close()

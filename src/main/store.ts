@@ -29,10 +29,12 @@ import { diffLines } from '../shared/diff'
 import type { ExportArticle } from './exportHtml'
 import { docText, extractArticleLinks } from './links'
 import { DEFAULT_ADMIN, hashPassword, verifyPassword } from './passwords'
+import { WikiError } from './errors'
+import { TaskStore } from './tasks'
 
 type Row = Record<string, unknown>
 
-export class WikiError extends Error {}
+export { WikiError }
 
 const UNTITLED = 'Ohne Titel'
 
@@ -65,11 +67,16 @@ export class WikiStore {
   private quiet = 0
   private txDepth = 0
 
+  /** Aufgaben (Reiter „Aufgaben“) in derselben Datei */
+  readonly tasks: TaskStore
+
   /** `author`: Name, unter dem Änderungen im Verlauf erscheinen */
   constructor(
     readonly db: DatabaseSync,
     public author = 'Unbekannt'
-  ) {}
+  ) {
+    this.tasks = new TaskStore(db, () => this.author)
+  }
 
   // ---------- Hilfsfunktionen ----------
 
