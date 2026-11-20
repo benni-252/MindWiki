@@ -15,7 +15,7 @@ import {
   sortTasks,
   summarize
 } from '../src/renderer/src/tasks/board'
-import { addDays, dueDropDate, dueKey, formatDue } from '../src/renderer/src/tasks/dates'
+import { addDays, dueDropDate, dueKey, formatDue, formatWeekday, quickDueOptions } from '../src/renderer/src/tasks/dates'
 
 let store: WikiStore
 
@@ -284,6 +284,18 @@ describe('Fälligkeit', () => {
     expect(dueDropDate('week', '2026-11-16')).toBe('2026-11-20')
     // Samstag: Sonntag ist schon „Morgen“
     expect(dueDropDate('week', '2026-11-21')).toBeUndefined()
+  })
+
+  it('bietet im Kontextmenü passende Tage an', () => {
+    const show = (day: string) => quickDueOptions(day).map((o) => `${o.label} ${formatWeekday(o.date)}`)
+    // Freitag: „Diese Woche“ wäre Sonntag
+    expect(show(today)).toEqual(['Heute Fr 20.11.', 'Morgen Sa 21.11.', 'Diese Woche So 22.11.', 'Nächste Woche Fr 27.11.'])
+    // Montag: Freitag derselben Woche
+    expect(show('2026-11-16')).toEqual(['Heute Mo 16.11.', 'Morgen Di 17.11.', 'Diese Woche Fr 20.11.', 'Nächste Woche Fr 27.11.'])
+    // Samstag: diese Woche ist praktisch vorbei
+    expect(show('2026-11-21')).toEqual(['Heute Sa 21.11.', 'Morgen So 22.11.', 'Nächste Woche Fr 27.11.'])
+    // Über den Jahreswechsel
+    expect(quickDueOptions('2026-12-31').map((o) => o.date)).toEqual(['2026-12-31', '2027-01-01', '2027-01-03', '2027-01-08'])
   })
 
   it('zeigt Fälligkeiten kurz an', () => {

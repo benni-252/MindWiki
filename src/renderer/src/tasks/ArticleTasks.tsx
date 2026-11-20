@@ -5,11 +5,13 @@ import { wiki } from '../api'
 import { useWiki } from '../store'
 import { todayString } from './dates'
 import { Avatars, DueChip, ProgressIcon } from './parts'
+import { useTaskMenu } from './TaskMenu'
 
 /** Im Artikel: Aufgaben, die mit ihm verknüpft sind, und neue anlegen. */
 export function ArticleTasks({ articleId }: { articleId: number }): React.JSX.Element | null {
   const board = useWiki((s) => s.board)
   const [title, setTitle] = useState('')
+  const { menu, menuTaskId, onContextMenu } = useTaskMenu()
   if (!board) return null
   const today = todayString()
   const tasks = board.tasks
@@ -36,8 +38,8 @@ export function ArticleTasks({ articleId }: { articleId: number }): React.JSX.El
       {tasks.length > 0 && (
         <ul className="article-task-list">
           {tasks.map((t) => (
-            <li key={t.id} className={t.progress === 'done' ? 'done' : ''}>
-              <button onClick={() => useWiki.getState().openTask(t.id)}>
+            <li key={t.id} className={`${t.progress === 'done' ? 'done' : ''} ${menuTaskId === t.id ? 'menu-open' : ''}`}>
+              <button onClick={() => useWiki.getState().openTask(t.id)} onContextMenu={onContextMenu(t.id)}>
                 <ProgressIcon progress={t.progress} size={16} />
                 <span className="article-task-title">{t.title}</span>
                 <DueChip task={t} today={today} />
@@ -63,6 +65,7 @@ export function ArticleTasks({ articleId }: { articleId: number }): React.JSX.El
           onChange={(e) => setTitle(e.target.value)}
         />
       </form>
+      {menu}
     </section>
   )
 }

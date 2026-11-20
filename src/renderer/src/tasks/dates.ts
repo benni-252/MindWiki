@@ -37,14 +37,18 @@ export function formatDate(s: string): string {
   return `${d}.${m}.${y}`
 }
 
+/** „Fr 28.11.“ */
+export function formatWeekday(s: string): string {
+  const [, m, d] = s.split('-')
+  return `${WEEKDAYS[fromDateString(s).getDay()]} ${d}.${m}.`
+}
+
 /** Kurz für Karten: „Heute“, „Morgen“, „Gestern“, „Fr 28.11.“ oder mit Jahr, wenn es nicht dieses ist */
 export function formatDue(s: string, today: string): string {
   if (s === today) return 'Heute'
   if (s === addDays(today, 1)) return 'Morgen'
   if (s === addDays(today, -1)) return 'Gestern'
-  const [y, m, d] = s.split('-')
-  const day = WEEKDAYS[fromDateString(s).getDay()]
-  return y === today.slice(0, 4) ? `${day} ${d}.${m}.` : `${d}.${m}.${y}`
+  return s.slice(0, 4) === today.slice(0, 4) ? formatWeekday(s) : formatDate(s)
 }
 
 export type DueKey = 'overdue' | 'today' | 'tomorrow' | 'week' | 'nextweek' | 'later' | 'none'
@@ -97,4 +101,16 @@ export function dueDropDate(key: DueKey, today: string): string | null | undefin
     default:
       return undefined
   }
+}
+
+/** Schnellauswahl für die Fälligkeit im Kontextmenü (Freitag als Ziel einer Woche) */
+export function quickDueOptions(today: string): { label: string; date: string }[] {
+  const options = [
+    { label: 'Heute', date: today },
+    { label: 'Morgen', date: addDays(today, 1) }
+  ]
+  const week = dueDropDate('week', today)
+  if (week) options.push({ label: 'Diese Woche', date: week })
+  options.push({ label: 'Nächste Woche', date: fridayOf(addDays(today, 7)) })
+  return options
 }

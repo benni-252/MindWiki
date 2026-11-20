@@ -19,6 +19,8 @@ const SHORTCUTS: [string, string][] = [
   ['Strg+1 / Strg+2', 'Mind Map / Aufgaben'],
   ['Strg+F', 'Aufgaben filtern'],
   ['Enter / Leertaste', 'Ausgewählte Karte öffnen'],
+  ['Rechtsklick / Umschalt+F10', 'Kontextmenü: Status, Fälligkeit, Zuweisen, Löschen'],
+  ['Entf', 'Ausgewählte Karte löschen'],
   ['Strg+Enter', 'Kommentar senden'],
   ['Ziehen einer Karte', 'In anderen Bucket / andere Spalte'],
   ['Allgemein', ''],
