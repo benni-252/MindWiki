@@ -22,6 +22,20 @@ Lokales Wiki als Mind Map: Artikel hängen in einem Baum (Hauptthema in der Mitt
 - **Als PDF exportieren:** Knopf oben im Artikel, Rechtsklick in der Mind Map oder *Datei › Artikel als PDF exportieren* (Strg+P). Das PDF enthält Pfad, Steckbrief (Passwort-Felder unkenntlich), Text mit Bildern und Tabellen, Abläufe zum Abhaken, Abhängigkeiten sowie Hinweise auf Störungen oder nicht freigegebene Entwürfe.
 - **Papierkorb:** Gelöschte Äste lassen sich unter *Bearbeiten › Papierkorb* wiederherstellen.
 
+### Aufgaben (wie der Planner in Teams)
+
+![Reiter „Aufgaben“ mit dem Beispiel-Wiki](docs/screenshots/aufgaben.png)
+
+- Oben gibt es zwei Reiter: **Mind Map** (Strg+1) und **Aufgaben** (Strg+2). Die Zahl am Reiter zeigt deine offenen Aufgaben, rot, wenn etwas überfällig ist.
+- **Buckets** sind die Spalten des Boards (z. B. *Zu erledigen*, *Diese Woche*, *Warten auf andere* – oder nach Themen). *Neuen Bucket hinzufügen* steht rechts; umbenennen per Doppelklick oder über „…“, dort auch verschieben und löschen (mit allen Aufgaben darin, nach Nachfrage).
+- **Aufgabe hinzufügen** oben in jeder Spalte (Name, optional Fälligkeit; das Feld bleibt für die nächste offen) oder *Neue Aufgabe* in der Kopfzeile. Neue Aufgaben stehen oben.
+- **Karten** zeigen Bezeichnungen, Priorität, Fälligkeit (rot = überfällig), Checkliste („2/5“), Notizen, Kommentare, den verknüpften Artikel und die zugewiesenen Personen. Der Kreis vor dem Titel hakt die Aufgabe ab; erledigte klappen unten in der Spalte zusammen. Karten mit der Maus in einen anderen Bucket oder an eine andere Stelle ziehen. Rechtsklick oder „…“: Fortschritt, Priorität, kopieren, löschen.
+- **Details** (Klick auf die Karte): Titel, *Zuweisen* (alle Benutzer des Wikis), *Bezeichnungen* (farbig, gelten für alle Aufgaben; dort auch anlegen, umbenennen, löschen), Bucket, Fortschritt (Nicht begonnen, In Bearbeitung, Erledigt), Priorität (Dringend, Wichtig, Mittel, Niedrig), Start- und Fälligkeitsdatum, *Wiki-Artikel verknüpfen*, Notizen, Checkliste und Kommentare. Alles speichert sofort. *Auf Karte anzeigen* blendet Notizen oder die Checkliste (zum direkten Abhaken) auf der Karte ein.
+- **Gruppieren nach** Bucket, Fortschritt, Priorität, Zugewiesen an oder Fälligkeitsdatum. Auch dort lässt sich ziehen: in *Erledigt*, in *Dringend*, von einer Person zur anderen oder nach *Morgen*.
+- **Filter:** Suchfeld (Strg+F; sucht in Titel, Notizen, Checkliste, Bezeichnungen, Personen und Artikel), *Mir zugewiesen* und *Filter* (Fälligkeit, Priorität, Bezeichnungen, Personen). **Liste** zeigt alle Aufgaben als Tabelle; ein Klick auf eine Spaltenüberschrift sortiert.
+- **Mit dem Wiki verknüpft:** Ein Klick auf den Artikel einer Karte öffnet ihn in der Mind Map. Im Artikel stehen unter *Aufgaben* alle verknüpften Aufgaben; dort lassen sich auch neue anlegen. Liegt der Artikel im Papierkorb, ist die Verknüpfung durchgestrichen; wird er endgültig gelöscht, bleibt die Aufgabe ohne Verknüpfung.
+- Aufgaben liegen in der Wiki-Datei und gelten für alle, die sie benutzen (Änderungen anderer erscheinen nach ein bis zwei Sekunden). Jeder angemeldete Benutzer darf Aufgaben anlegen und ändern – ohne Freigabe und ohne Verlauf, wie im Planner. Kommentare kann nur löschen, wer sie geschrieben hat. Ältere MindWiki-Versionen (ab 1.8) öffnen die Datei weiter, sehen die Aufgaben aber nicht.
+
 ### Anmeldung, Benutzer und Rollen
 
 - Beim Start meldet man sich mit **Benutzername und Passwort** an. Die Benutzer stehen in der Wiki-Datei und gelten damit für alle, die sie benutzen.
@@ -72,6 +86,7 @@ Der Admin schaltet sie unter *Freigaben einstellen* im Benutzer-Menü ein (gilt 
 | Pfeiltasten, Alt+↑/↓ | Navigieren, Reihenfolge ändern |
 | Knoten auf anderen ziehen | Umhängen |
 | Knoten ins Freie ziehen | Frei platzieren (Unterartikel wandern mit) |
+| Strg+1 / Strg+2 | Mind Map / Aufgaben |
 | Strg+K | Suchen (Titel, Text, Ablaufschritte) |
 | Strg+Umschalt+H | Letzte Änderungen (auch von anderen) |
 | `[[` im Text | Anderen Artikel verlinken (erscheint als gestrichelte Linie in der Mind Map) |
@@ -109,4 +124,5 @@ Für eine neue Version `version` in `package.json` erhöhen und in `CHANGELOG.md
 - `src/preload` – stellt der Oberfläche die typisierte `window.wiki`-API bereit
 - `src/shared/types.ts` – gemeinsame Typen und Liste der IPC-Methoden
 - `src/shared/impact.ts` – welche Artikel von einer Störung betroffen sind (über die Abhängigkeiten)
-- `src/renderer/src` – React-Oberfläche: `mindmap/` (React Flow + Layout), `article/` (TipTap-Editor), `checklist/` (Abläufe), `dialogs/`
+- `src/main/tasks.ts`, `src/shared/tasks.ts` – Aufgaben (Buckets, Checklisten, Bezeichnungen, Kommentare); die Tabellen stehen in `OPTIONAL_TABLES` in `db.ts`, damit ältere Versionen die Datei weiter öffnen
+- `src/renderer/src` – React-Oberfläche: `mindmap/` (React Flow + Layout), `article/` (TipTap-Editor), `checklist/` (Abläufe), `tasks/` (Reiter „Aufgaben“: Board, Liste, Details), `dialogs/`

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { formatBytes, isBlockedAttachment, MAX_ATTACHMENT_BYTES } from '../../shared/attachments'
 import { findTemplate } from '../../shared/templates'
-import type { DbInfo, LoginInfo, ProxyPrompt, Role, Session, TreeData, UnsavedText, UpdateState } from '../../shared/types'
+import type { DbInfo, LoginInfo, ProxyPrompt, Role, Session, TaskBoard, TreeData, UnsavedText, UpdateState } from '../../shared/types'
 import { errorMessage, flushPending, hasFailed, hasPending, saveAll, wiki } from './api'
 import { countSubtree, impactOf, indexTree, pathTo, visibleContentId, type SeenState } from './treeUtils'
 
@@ -33,6 +33,9 @@ interface Toast {
 
 /** true: Knoten sichtbar machen; 'flash': zusätzlich kurz hervorheben */
 export type CenterMode = boolean | 'flash'
+
+/** Reiter oben: Mind Map oder Aufgaben (Board wie der Planner in Teams) */
+export type View = 'map' | 'tasks'
 
 interface State {
   tree: TreeData | null
@@ -66,6 +69,14 @@ interface State {
   loginInfo: LoginInfo | null
   /** Texte, die nicht gespeichert werden konnten und auf diesem Rechner aufgehoben sind */
   unsaved: UnsavedText[]
+  /** Gewählter Reiter */
+  view: View
+  /** Aufgaben (Reiter „Aufgaben“) */
+  board: TaskBoard | null
+  /** Aufgabe, deren Details gerade offen sind */
+  openTaskId: number | null
+  /** Gerade angelegt: Titel zum Überschreiben markieren */
+  openTaskFresh: boolean
 
   loadAll(): Promise<void>
   loadTree(): Promise<void>
@@ -134,6 +145,16 @@ interface State {
   deleteAttachment(id: number): Promise<void>
   /** Artikel als PDF speichern (Speichern-Dialog im Hauptprozess) */
   exportPdf(id: number): Promise<void>
+
+  setView(view: View): void
+  loadBoard(): Promise<void>
+  /**
+   * Ändert Aufgaben und lädt das Board neu; Fehler erscheinen als Hinweis. Mit `optimistic`
+   * zeigt das Board die Änderung sofort (z. B. beim Ziehen), bevor die Wiki-Datei antwortet.
+   */
+  taskAct<T>(action: () => Promise<T>, optimistic?: (board: TaskBoard) => TaskBoard): Promise<T | undefined>
+  /** Details einer Aufgabe öffnen (null: schließen); `fresh`: neu angelegt, Titel markieren */
+  openTask(id: number | null, fresh?: boolean): void
 }
 
 function readPref(key: string, fallback: boolean): boolean {
@@ -273,6 +294,10 @@ export const useWiki = create<State>((set, get) => {
     update: { status: 'idle', current: __APP_VERSION__ },
     proxyPrompt: null,
     unsaved: [],
+    view: 'map',
+    board: null,
+    openTaskId: null,
+    openTaskFresh: false,
 
     async loadAll() {
       const [dbInfo, loginInfo, update, proxyPrompt] = await Promise.all([
@@ -282,15 +307,30 @@ export const useWiki = create<State>((set, get) => {
         wiki.getProxyPrompt()
       ])
       if (!loginInfo.session) {
-        set({ dbInfo, loginInfo, update, proxyPrompt, session: null, tree: null, dialog: null, panelOpen: false, userName: '' })
+        set({
+          dbInfo,
+          loginInfo,
+          update,
+          proxyPrompt,
+          session: null,
+          tree: null,
+          board: null,
+          openTaskId: null,
+          dialog: null,
+          panelOpen: false,
+          userName: ''
+        })
         return
       }
-      const tree = await wiki.getTree()
+      const [tree, board] = await Promise.all([wiki.getTree(), wiki.getTaskBoard()])
       const userName = loginInfo.session.username
       set({
         update,
         proxyPrompt,
         tree,
+        board,
+        openTaskId: null,
+        view: 'map',
         dbInfo,
         loginInfo,
         session: loginInfo.session,
@@ -330,6 +370,8 @@ export const useWiki = create<State>((set, get) => {
     },
 
     openArticle(id, center = false) {
+      // Artikel stehen in der Mind Map – von den Aufgaben aus dorthin wechseln
+      if (get().view !== 'map') get().setView('map')
       const { panelOpen, selectedId } = get()
       if (panelOpen && id !== selectedId && hasFailed()) {
         void get()
@@ -677,10 +719,35 @@ export const useWiki = create<State>((set, get) => {
     setApprovalRequired: (on) =>
       decide(() => wiki.setApprovalRequired(on), on ? 'Freigabe-Pflicht eingeschaltet.' : 'Freigabe-Pflicht ausgeschaltet.'),
 
+    // Nach dem Start (und beim Wechsel des Wikis) immer die Mind Map
+    setView: (view) => set({ view }),
+
+    async loadBoard() {
+      set({ board: await wiki.getTaskBoard() })
+    },
+
+    async taskAct(action, optimistic) {
+      const before = get().board
+      if (optimistic && before) set({ board: optimistic(before) })
+      try {
+        const result = await action()
+        await get().loadBoard()
+        return result
+      } catch (err) {
+        const message = errorMessage(err)
+        get().toast(message, 'error')
+        if (/anmelden/i.test(message)) void get().loadAll()
+        else await get().loadBoard().catch(() => undefined)
+        return undefined
+      }
+    },
+
+    openTask: (openTaskId, fresh = false) => set({ openTaskId, openTaskFresh: fresh }),
+
     async externalChange() {
       const before = get().tree
       try {
-        await get().loadTree()
+        await Promise.all([get().loadTree(), get().loadBoard()])
       } catch {
         return // Datei kurz nicht erreichbar – beim nächsten Mal
       }

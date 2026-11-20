@@ -20,6 +20,8 @@ import { UsersDialog } from './dialogs/UsersDialog'
 import { LoginScreen } from './LoginScreen'
 import { MindMap } from './mindmap/MindMap'
 import { useWiki } from './store'
+import { TaskDialog } from './tasks/TaskDialog'
+import { TasksView } from './tasks/TasksView'
 import { TopBar } from './TopBar'
 
 const MIN_PANEL = 380
@@ -105,6 +107,8 @@ export function App(): React.JSX.Element {
   const panelOpen = useWiki((s) => s.panelOpen)
   const panelMax = useWiki((s) => s.panelMax)
   const dialog = useWiki((s) => s.dialog)
+  const view = useWiki((s) => s.view)
+  const openTaskId = useWiki((s) => s.openTaskId)
   const session = useWiki((s) => s.session)
   const loginInfo = useWiki((s) => s.loginInfo)
   const [fatal, setFatal] = useState<string | null>(null)
@@ -126,6 +130,8 @@ export function App(): React.JSX.Element {
       'ctrl+0': 'fit',
       'ctrl+p': 'export-pdf',
       'ctrl+s': 'save',
+      'ctrl+1': 'show-map',
+      'ctrl+2': 'show-tasks',
       f1: 'shortcuts'
     }
     const onKey = (e: KeyboardEvent): void => {
@@ -207,34 +213,40 @@ export function App(): React.JSX.Element {
     <ReactFlowProvider>
       <div className="app">
         <TopBar />
-        <main
-          className={`workspace ${showPanel ? 'with-panel' : ''} ${showPanel && panelMax ? 'panel-max' : ''}`}
-          style={{ '--panel-width': `${panelWidth}px` } as React.CSSProperties}
-        >
-          <div className="notices">
-            <UnsavedBar />
-            <AdminPasswordBar />
-            <SampleBar />
-          </div>
-          <MindMap />
-          {showPanel && (
-            <>
-              {!panelMax && (
-                <div
-                  className="resizer"
-                  role="separator"
-                  aria-orientation="vertical"
-                  title="Breite ändern"
-                  onPointerDown={onResizeStart}
-                  onPointerMove={onResizeMove}
-                  onPointerUp={onResizeEnd}
-                  onPointerCancel={onResizeEnd}
-                />
-              )}
-              <ArticlePanel id={selectedId} />
-            </>
-          )}
-        </main>
+        <div className="app-main">
+          {/* Die Mind Map bleibt im Hintergrund erhalten (Ansicht, offener Artikel), solange die Aufgaben zu sehen sind */}
+          <main
+            className={`workspace ${showPanel ? 'with-panel' : ''} ${showPanel && panelMax ? 'panel-max' : ''} ${view === 'tasks' ? 'behind' : ''}`}
+            style={{ '--panel-width': `${panelWidth}px` } as React.CSSProperties}
+            inert={view === 'tasks'}
+          >
+            <div className="notices">
+              <UnsavedBar />
+              <AdminPasswordBar />
+              <SampleBar />
+            </div>
+            <MindMap />
+            {showPanel && (
+              <>
+                {!panelMax && (
+                  <div
+                    className="resizer"
+                    role="separator"
+                    aria-orientation="vertical"
+                    title="Breite ändern"
+                    onPointerDown={onResizeStart}
+                    onPointerMove={onResizeMove}
+                    onPointerUp={onResizeEnd}
+                    onPointerCancel={onResizeEnd}
+                  />
+                )}
+                <ArticlePanel id={selectedId} />
+              </>
+            )}
+          </main>
+          {view === 'tasks' && <TasksView />}
+        </div>
+        {openTaskId != null && <TaskDialog key={openTaskId} id={openTaskId} />}
         {dialog === 'search' && <SearchDialog />}
         {dialog === 'trash' && <TrashDialog />}
         {dialog === 'outages' && <OutagesDialog />}

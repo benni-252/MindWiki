@@ -7,11 +7,13 @@ interface Props {
   children: ReactNode
   footer?: ReactNode
   wide?: boolean
+  /** Zusätzliche CSS-Klasse für den Dialog */
+  className?: string
   /** Escape zuerst hier behandeln (z. B. Suche leeren); true = erledigt, Dialog bleibt offen */
   onEscape?: () => boolean
 }
 
-export function Modal({ title, onClose, children, footer, wide, onEscape }: Props): React.JSX.Element {
+export function Modal({ title, onClose, children, footer, wide, className, onEscape }: Props): React.JSX.Element {
   const backdrop = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -34,7 +36,7 @@ export function Modal({ title, onClose, children, footer, wide, onEscape }: Prop
 
   return (
     <div ref={backdrop} className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={`modal ${wide ? 'wide' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
+      <div className={`modal ${wide ? 'wide' : ''} ${className ?? ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <header>
           <h2>{title}</h2>
           <button className="icon-btn" onClick={onClose} title="Schließen">

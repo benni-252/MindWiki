@@ -157,6 +157,66 @@ export const OPTIONAL_TABLES = `
     dx REAL NOT NULL,
     dy REAL NOT NULL
   );
+
+  -- Aufgaben (Reiter „Aufgaben“, wie der Planner in Teams): Buckets sind die Spalten des Boards
+  CREATE TABLE IF NOT EXISTS task_buckets (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY,
+    bucket_id INTEGER NOT NULL REFERENCES task_buckets(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    progress TEXT NOT NULL DEFAULT 'open' CHECK (progress IN ('open', 'active', 'done')),
+    priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('urgent', 'important', 'medium', 'low')),
+    start_date TEXT,
+    due_date TEXT,
+    -- Verknüpfter Artikel; endgültig gelöscht → Verknüpfung fällt weg, die Aufgabe bleibt
+    article_id INTEGER REFERENCES articles(id) ON DELETE SET NULL,
+    preview TEXT CHECK (preview IN ('notes', 'checklist')),
+    position INTEGER NOT NULL DEFAULT 0,
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    completed_by TEXT,
+    completed_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_tasks_bucket ON tasks(bucket_id, position);
+  CREATE INDEX IF NOT EXISTS idx_tasks_article ON tasks(article_id);
+  CREATE TABLE IF NOT EXISTS task_assignees (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    username TEXT NOT NULL COLLATE NOCASE,
+    PRIMARY KEY (task_id, username)
+  ) WITHOUT ROWID;
+  CREATE TABLE IF NOT EXISTS task_labels (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    color TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS task_label_links (
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    label_id INTEGER NOT NULL REFERENCES task_labels(id) ON DELETE CASCADE,
+    PRIMARY KEY (task_id, label_id)
+  ) WITHOUT ROWID;
+  CREATE INDEX IF NOT EXISTS idx_task_label_links_label ON task_label_links(label_id);
+  CREATE TABLE IF NOT EXISTS task_checklist (
+    id INTEGER PRIMARY KEY,
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    checked INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_task_checklist_task ON task_checklist(task_id, position);
+  CREATE TABLE IF NOT EXISTS task_comments (
+    id INTEGER PRIMARY KEY,
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    author TEXT NOT NULL,
+    at TEXT NOT NULL,
+    text TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id, at);
 `
 
 export class NotAWikiError extends Error {}

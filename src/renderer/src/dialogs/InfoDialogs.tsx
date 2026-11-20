@@ -15,6 +15,12 @@ const SHORTCUTS: [string, string][] = [
   ['Ziehen auf anderen Artikel', 'Umhängen'],
   ['Ziehen ins Freie', 'Frei platzieren (Unterartikel wandern mit)'],
   ['Esc', 'Artikel schließen'],
+  ['Aufgaben', ''],
+  ['Strg+1 / Strg+2', 'Mind Map / Aufgaben'],
+  ['Strg+F', 'Aufgaben filtern'],
+  ['Enter / Leertaste', 'Ausgewählte Karte öffnen'],
+  ['Strg+Enter', 'Kommentar senden'],
+  ['Ziehen einer Karte', 'In anderen Bucket / andere Spalte'],
   ['Allgemein', ''],
   ['Strg+K', 'Suchen'],
   ['Strg+Umschalt+H', 'Letzte Änderungen'],
@@ -39,7 +45,7 @@ export function ShortcutsDialog(): React.JSX.Element {
         <tbody>
           {SHORTCUTS.map(([key, text]) =>
             text ? (
-              <tr key={key}>
+              <tr key={`${key}|${text}`}>
                 <td>
                   <kbd>{key}</kbd>
                 </td>

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { autoBackup, openDatabase } from './db'
 import type { Session } from '../shared/types'
+import { fillSampleTasks } from './sample'
 import { saveSettings } from './settings'
 import { WikiStore } from './store'
 
@@ -46,6 +47,14 @@ export function openWiki(file: string): void {
     }
   }
   next.cleanupImages()
+  // Ältere Beispiel-Wikis bekommen einmal die Beispiel-Aufgaben
+  if (next.isSample()) {
+    try {
+      fillSampleTasks(next)
+    } catch (err) {
+      console.error('Beispiel-Aufgaben konnten nicht angelegt werden', err)
+    }
+  }
   store?.db.close()
   store = next
   dbFile = file
