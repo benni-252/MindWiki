@@ -2,6 +2,24 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.12.0
+
+**Neu: Kontextmenü für Aufgaben**
+- Rechtsklick auf eine Aufgabe – auf dem Board, in der Liste oder im Artikel – öffnet ein Menü:
+  - **Status:** Nicht begonnen, In Bearbeitung, Erledigt
+  - **Priorität:** Dringend, Wichtig, Mittel, Niedrig
+  - **Fälligkeit:** Heute, Morgen, Diese Woche, Nächste Woche, eigenes Datum oder Datum entfernen
+  - **Zuweisen:** Personen hinzufügen oder entfernen (das Menü bleibt dafür offen), „Niemandem zuweisen“
+  - **Aufgabe kopieren** und **Löschen** (mit Nachfrage)
+- Das Menü zeigt den aktuellen Stand gleich mit an (z. B. „Fälligkeit: Fr 28.11.“, „Zuweisen: Ben“).
+- Auch über „…“ auf der Karte, per Kontextmenü-Taste oder Umschalt+F10. Entf auf einer ausgewählten Karte löscht sie nach Nachfrage.
+
+**Download**
+- `MindWiki-Setup-1.12.0.exe` – Installer (mit automatischen Updates)
+- `MindWiki-1.12.0-portable.exe` – ohne Installation starten
+
+Keine Änderung an der Wiki-Datei – 1.11.0 und 1.12.0 können sie gleichzeitig nutzen.
+
 ## 1.11.0
 
 **Neu: Reiter „Aufgaben“ – eine To-do-Liste wie der Planner in Teams**

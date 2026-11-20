@@ -3673,11 +3673,81 @@ input.fs-label::-webkit-calendar-picker-indicator {
   opacity: 1;
 }
 .task-menu {
-  min-width: 220px;
+  min-width: 250px;
+  max-width: 320px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   cursor: default;
 }
-.task-menu .menu-caption {
-  padding-top: 6px;
+.menu-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 400;
+}
+.menu-value-text {
+  max-width: 120px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.menu > button.checked .menu-value {
+  color: inherit;
+}
+.task-menu-date {
+  display: flex;
+  gap: 6px;
+  padding: 4px 10px 6px;
+}
+.task-menu-date input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+  background: var(--surface);
+  color: var(--text);
+}
+.task-menu-date input:focus {
+  border-color: var(--accent);
+}
+.task-menu-people {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.task-menu-people > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  text-align: left;
+}
+.task-menu-people > button:hover {
+  background: var(--surface-2);
+}
+.task-menu-people > button.checked-person {
+  color: var(--accent);
+  font-weight: 600;
+}
+.task-menu-people > button.deleted {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.task-list tbody tr.menu-open td,
+.article-task-list li.menu-open button {
+  background: var(--accent-soft);
 }
 
 .progress-icon {

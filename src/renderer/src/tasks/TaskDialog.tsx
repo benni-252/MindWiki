@@ -9,7 +9,7 @@ import { pathTo } from '../treeUtils'
 import { patchInBoard } from './board'
 import { todayString } from './dates'
 import { Avatar, LabelChip, PriorityIcon, ProgressIcon, useDismiss } from './parts'
-import { copyTask, deleteTask, setProgress } from './TaskCard'
+import { copyTask, deleteTask, setProgress } from './taskActions'
 
 type Popover = 'assign' | 'labels' | 'article' | null
 

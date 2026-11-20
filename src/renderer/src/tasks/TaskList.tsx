@@ -6,7 +6,8 @@ import { wiki } from '../api'
 import { useWiki } from '../store'
 import { sortTasks, type SortKey } from './board'
 import { Avatars, DueChip, LabelChip, PriorityIcon, ProgressIcon } from './parts'
-import { setPriority, setProgress } from './TaskCard'
+import { setPriority, setProgress } from './taskActions'
+import { useTaskMenu } from './TaskMenu'
 
 const COLUMNS: { key: SortKey; title: string }[] = [
   { key: 'title', title: 'Aufgabe' },
@@ -58,6 +59,7 @@ export function TaskList({
   filtered: boolean
 }): React.JSX.Element {
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: 'bucket', desc: false })
+  const { menu, menuTaskId, onContextMenu } = useTaskMenu()
   const rows = useMemo(() => sortTasks(tasks, board, sort.key, sort.desc), [tasks, board, sort])
   const s = useWiki.getState()
   const bucketName = (id: number): string => board.buckets.find((b) => b.id === id)?.name ?? ''
@@ -83,7 +85,12 @@ export function TaskList({
           {rows.map((t) => {
             const done = t.progress === 'done'
             return (
-              <tr key={t.id} className={done ? 'done' : ''} onClick={() => s.openTask(t.id)}>
+              <tr
+                key={t.id}
+                className={`${done ? 'done' : ''} ${menuTaskId === t.id ? 'menu-open' : ''}`}
+                onClick={() => s.openTask(t.id)}
+                onContextMenu={onContextMenu(t.id)}
+              >
                 <td className="tl-check">
                   <button
                     className="task-check"
@@ -161,6 +168,7 @@ export function TaskList({
       {rows.length === 0 && (
         <p className="task-list-empty muted">{filtered ? 'Keine Aufgabe passt zum Filter.' : 'Noch keine Aufgaben.'}</p>
       )}
+      {menu}
     </div>
   )
 }

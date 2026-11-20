@@ -239,3 +239,114 @@ test('Beispiel-Aufgaben im Beispiel-Wiki (Bild für die Anleitung)', async () =>
     removeDir(sampleDir)
   }
 })
+
+test('Kontextmenü einer Aufgabe: Status, Fälligkeit, Zuweisen, Löschen', async () => {
+  const file = path.join(workDir, 'Menue.db')
+  const setup = new WikiStore(openDatabase(file, 'Menue'), 'admin')
+  const article = setup.createArticle(setup.rootId(), 'Firewall')
+  setup.createUser('Anna', 'demo', 'editor')
+  setup.createUser('Ben', 'demo', 'author')
+  const bucket = setup.tasks.createBucket('Zu erledigen')
+  setup.tasks.createTask(bucket, 'Regeln prüfen', { articleId: article })
+  setup.tasks.createTask(bucket, 'Lizenz verlängern')
+  setup.db.close()
+  const saved = (title: string) => {
+    const store = new WikiStore(openDatabase(file, 'Menue'), 'test')
+    try {
+      return store.tasks.getTaskBoard().tasks.find((t) => t.title === title)
+    } finally {
+      store.db.close()
+    }
+  }
+
+  const { app, page } = await launch(workDir, 'Menue.db')
+  running = app
+  await page.getByRole('button', { name: 'Aufgaben', exact: true }).click()
+  const menu = page.locator('.task-menu')
+  const rules = card(page, 'Regeln prüfen')
+
+  // Status
+  await rules.click({ button: 'right' })
+  await expect(menu).toBeVisible()
+  await expect(menu.getByRole('menuitemradio', { name: 'Nicht begonnen' })).toHaveAttribute('aria-checked', 'true')
+  await menu.getByRole('menuitemradio', { name: 'In Bearbeitung' }).click()
+  await expect(menu).toHaveCount(0)
+  await expect(rules.locator('.progress-icon.active')).toBeVisible()
+  await expect.poll(() => saved('Regeln prüfen')?.progress).toBe('active')
+  // Der Rechtsklick öffnet nicht die Details
+  await expect(page.locator('.task-modal')).toHaveCount(0)
+
+  // Fälligkeit: Schnellauswahl und eigenes Datum
+  await rules.click({ button: 'right' })
+  await menu.getByRole('button', { name: /Fälligkeit/ }).click()
+  await menu.getByRole('menuitemradio', { name: /^Morgen/ }).click()
+  await expect(rules.locator('.due-chip')).toHaveText('Morgen')
+  await rules.click({ button: 'right' })
+  await expect(menu.getByRole('button', { name: /Fälligkeit/ })).toContainText('Morgen')
+  await menu.getByRole('button', { name: /Fälligkeit/ }).click()
+  await menu.getByLabel('Fälligkeitsdatum wählen').fill('2031-03-14')
+  await menu.getByRole('button', { name: 'Setzen' }).click()
+  await expect(rules.locator('.due-chip')).toContainText('14.03.2031')
+  await expect.poll(() => saved('Regeln prüfen')?.dueDate).toBe('2031-03-14')
+
+  // Zuweisen: mehrere Personen nacheinander, das Menü bleibt offen
+  await rules.click({ button: 'right' })
+  await menu.getByRole('button', { name: /Zuweisen/ }).click()
+  await menu.getByRole('menuitemcheckbox', { name: 'Ben' }).click()
+  await menu.getByRole('menuitemcheckbox', { name: 'Anna' }).click()
+  await expect(menu.getByRole('menuitemcheckbox', { name: 'Anna' })).toHaveAttribute('aria-checked', 'true')
+  await page.waitForTimeout(300)
+  await page.screenshot({ path: path.join(shots, 'aufgaben-kontextmenue.png') })
+  await page.keyboard.press('Escape')
+  await expect(menu).toHaveCount(0)
+  await expect(rules.locator('.avatar')).toHaveText(['AN', 'BE'])
+  await expect.poll(() => saved('Regeln prüfen')?.assignees).toEqual(['Anna', 'Ben'])
+  // Jemand anderem zuweisen: Ben raus, admin rein
+  await rules.click({ button: 'right' })
+  await menu.getByRole('button', { name: /Zuweisen/ }).click()
+  await menu.getByRole('menuitemcheckbox', { name: 'Ben' }).click()
+  await menu.getByRole('menuitemcheckbox', { name: 'admin' }).click()
+  await page.keyboard.press('Escape')
+  await expect.poll(() => saved('Regeln prüfen')?.assignees).toEqual(['admin', 'Anna'])
+  await rules.click({ button: 'right' })
+  await menu.getByRole('button', { name: /Zuweisen/ }).click()
+  await menu.getByRole('button', { name: 'Niemandem zuweisen' }).click()
+  await expect(rules.locator('.avatar')).toHaveCount(0)
+
+  // Priorität
+  await rules.click({ button: 'right' })
+  await menu.getByRole('button', { name: /Priorität/ }).click()
+  await menu.getByRole('menuitemradio', { name: 'Dringend' }).click()
+  await expect(rules.locator('.prio-icon.urgent')).toBeVisible()
+
+  // Auch in der Liste: Rechtsklick auf die Zeile → Löschen (mit Nachfrage)
+  await page.getByRole('tab', { name: 'Liste' }).click()
+  const row = page.locator('.task-list tbody tr', { hasText: 'Lizenz verlängern' })
+  await row.click({ button: 'right' })
+  await expect(row).toHaveClass(/menu-open/)
+  await menu.getByRole('button', { name: 'Löschen' }).click()
+  await page.locator('.modal').getByRole('button', { name: 'Löschen' }).click()
+  await expect(row).toHaveCount(0)
+  await expect.poll(() => saved('Lizenz verlängern')).toBeUndefined()
+
+  // Und im Artikel: Rechtsklick auf die Aufgabe → Erledigt
+  await page.getByRole('tab', { name: 'Board' }).click()
+  await rules.locator('.task-article').click()
+  const inArticle = page.locator('.article-task-list li', { hasText: 'Regeln prüfen' })
+  await inArticle.click({ button: 'right' })
+  await menu.getByRole('menuitemradio', { name: 'Erledigt' }).click()
+  await expect(inArticle).toHaveClass(/\bdone\b/)
+  await expect.poll(() => saved('Regeln prüfen')?.progress).toBe('done')
+
+  // Entf auf einer ausgewählten Karte löscht ebenfalls (nach Nachfrage)
+  await page.keyboard.press('Control+2')
+  await page.locator('.done-toggle').click()
+  await rules.focus()
+  await page.keyboard.press('Delete')
+  await expect(page.locator('.modal')).toContainText('Regeln prüfen')
+  await page.locator('.modal').getByRole('button', { name: 'Abbrechen' }).click()
+  await expect(rules).toBeVisible()
+  await expect(page.locator('.toast.error')).toHaveCount(0)
+  await app.close()
+  running = null
+})
