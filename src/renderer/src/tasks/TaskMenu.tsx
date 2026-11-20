@@ -3,8 +3,8 @@ import { useCallback, useLayoutEffect, useRef, useState, type MouseEvent } from 
 import { createPortal } from 'react-dom'
 import { PRIORITY_LABEL, PRIORITY_ORDER, PROGRESS_LABEL, PROGRESS_ORDER } from '../../../shared/tasks'
 import { useWiki } from '../store'
-import { formatDue, formatWeekday, quickDueOptions, todayString } from './dates'
-import { Avatar, PriorityIcon, ProgressIcon, useDismiss } from './parts'
+import { DATE_KEY_HINT, formatDue, formatWeekday, quickDueOptions, todayString } from './dates'
+import { Avatar, dateKeys, PriorityIcon, ProgressIcon, useDismiss } from './parts'
 import { copyTask, deleteTask, setAssignees, setDueDate, setPriority, setProgress, toggleAssignee } from './taskActions'
 
 type View = 'main' | 'priority' | 'due' | 'assign'
@@ -186,7 +186,9 @@ export function TaskMenu({ taskId, x, y, onClose }: Props): React.JSX.Element | 
               type="date"
               value={customDate}
               aria-label="Fälligkeitsdatum wählen"
+              title={DATE_KEY_HINT}
               onChange={(e) => setCustomDate(e.target.value)}
+              onKeyDown={dateKeys(setCustomDate)}
             />
             <button type="submit" className="btn btn-small btn-primary" disabled={!customDate || customDate === task.dueDate}>
               Setzen

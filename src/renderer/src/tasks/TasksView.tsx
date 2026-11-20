@@ -34,8 +34,8 @@ import {
   type GroupBy,
   type TaskFilter
 } from './board'
-import { DUE_LABEL, DUE_ORDER, todayString } from './dates'
-import { Avatar, LabelChip, PriorityIcon, useDismiss } from './parts'
+import { DATE_KEY_HINT, DUE_LABEL, DUE_ORDER, todayString } from './dates'
+import { Avatar, dateKeys, LabelChip, PriorityIcon, useDismiss } from './parts'
 import { TaskCard } from './TaskCard'
 import { TaskList } from './TaskList'
 
@@ -370,7 +370,14 @@ function AddTask({ column }: { column: BoardColumn }): React.JSX.Element | null 
       {!add.dueDate && (
         <label className="add-task-due">
           <span>Fällig</span>
-          <input type="date" value={due} aria-label="Fälligkeitsdatum" onChange={(e) => setDue(e.target.value)} />
+          <input
+            type="date"
+            value={due}
+            aria-label="Fälligkeitsdatum"
+            title={DATE_KEY_HINT}
+            onChange={(e) => setDue(e.target.value)}
+            onKeyDown={dateKeys(setDue)}
+          />
         </label>
       )}
       <div className="row-end">

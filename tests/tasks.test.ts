@@ -15,7 +15,15 @@ import {
   sortTasks,
   summarize
 } from '../src/renderer/src/tasks/board'
-import { addDays, dueDropDate, dueKey, formatDue, formatWeekday, quickDueOptions } from '../src/renderer/src/tasks/dates'
+import {
+  addDays,
+  dateFromKey,
+  dueDropDate,
+  dueKey,
+  formatDue,
+  formatWeekday,
+  quickDueOptions
+} from '../src/renderer/src/tasks/dates'
 
 let store: WikiStore
 
@@ -296,6 +304,20 @@ describe('Fälligkeit', () => {
     expect(show('2026-11-21')).toEqual(['Heute Sa 21.11.', 'Morgen So 22.11.', 'Nächste Woche Fr 27.11.'])
     // Über den Jahreswechsel
     expect(quickDueOptions('2026-12-31').map((o) => o.date)).toEqual(['2026-12-31', '2027-01-01', '2027-01-03', '2027-01-08'])
+  })
+
+  it('versteht Kürzel im Datumsfeld: h, m, n', () => {
+    expect(dateFromKey('h', today)).toBe('2026-11-20')
+    expect(dateFromKey('m', today)).toBe('2026-11-21')
+    // Freitag nächste Woche – von Freitag, Sonntag und Montag aus
+    expect(dateFromKey('n', today)).toBe('2026-11-27')
+    expect(dateFromKey('n', '2026-11-22')).toBe('2026-11-27')
+    expect(dateFromKey('n', '2026-11-23')).toBe('2026-12-04')
+    // Großbuchstaben (Umschalt) ebenso, andere Tasten nicht
+    expect(dateFromKey('M', '2026-12-31')).toBe('2027-01-01')
+    expect(dateFromKey('x', today)).toBeNull()
+    expect(dateFromKey('1', today)).toBeNull()
+    expect(dateFromKey('Enter', today)).toBeNull()
   })
 
   it('zeigt Fälligkeiten kurz an', () => {

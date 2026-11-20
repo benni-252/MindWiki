@@ -2,6 +2,21 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.13.0
+
+**Neu: Datum per Buchstabe eintragen**
+- In den Datumsfeldern der Aufgaben genügt ein Buchstabe:
+  - **h** – heute
+  - **m** – morgen
+  - **n** – Freitag nächste Woche
+- Gilt für Start- und Fälligkeitsdatum in den Details, für die Fälligkeit beim Anlegen einer Aufgabe und für das eigene Datum im Rechtsklick-Menü. Ein kleiner Hinweis in den Details erinnert daran.
+
+**Download**
+- `MindWiki-Setup-1.13.0.exe` – Installer (mit automatischen Updates)
+- `MindWiki-1.13.0-portable.exe` – ohne Installation starten
+
+Keine Änderung an der Wiki-Datei – 1.11, 1.12 und 1.13 können sie gleichzeitig nutzen.
+
 ## 1.12.0
 
 **Neu: Kontextmenü für Aufgaben**

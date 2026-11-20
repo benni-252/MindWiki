@@ -21,6 +21,7 @@ const SHORTCUTS: [string, string][] = [
   ['Enter / Leertaste', 'Ausgewählte Karte öffnen'],
   ['Rechtsklick / Umschalt+F10', 'Kontextmenü: Status, Fälligkeit, Zuweisen, Löschen'],
   ['Entf', 'Ausgewählte Karte löschen'],
+  ['h / m / n im Datumsfeld', 'Heute / morgen / Freitag nächste Woche'],
   ['Strg+Enter', 'Kommentar senden'],
   ['Ziehen einer Karte', 'In anderen Bucket / andere Spalte'],
   ['Allgemein', ''],
