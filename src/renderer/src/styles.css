@@ -4337,6 +4337,15 @@ input.fs-label::-webkit-calendar-picker-indicator {
 .td-grid .td-select-icon select {
   padding-left: 32px;
 }
+.td-date-hint {
+  margin: -6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.td-date-hint kbd {
+  font-size: 10.5px;
+  padding: 0 5px;
+}
 .td-field .td-anchor {
   align-self: flex-start;
   max-width: 100%;

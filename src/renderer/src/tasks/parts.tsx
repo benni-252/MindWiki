@@ -1,9 +1,9 @@
 import { ArrowDown, Bell, CalendarDays } from 'lucide-react'
-import { useEffect, type CSSProperties, type RefObject } from 'react'
+import { useEffect, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from 'react'
 import { labelHex, PRIORITY_LABEL, PROGRESS_LABEL } from '../../../shared/tasks'
 import type { Task, TaskLabel, TaskPriority, TaskProgress, TaskUser } from '../../../shared/types'
 import { avatarColor, initials, isOverdue } from './board'
-import { formatDate, formatDue } from './dates'
+import { dateFromKey, formatDate, formatDue, todayString } from './dates'
 
 /** Schließt ein Aufklapp-Menü bei Klick daneben (und mit Esc, außer in Dialogen, die Esc selbst verteilen). */
 export function useDismiss(open: boolean, ref: RefObject<HTMLElement | null>, close: () => void, escape = true): void {
@@ -25,6 +25,21 @@ export function useDismiss(open: boolean, ref: RefObject<HTMLElement | null>, cl
       window.removeEventListener('keydown', onKey, true)
     }
   }, [open, ref, close, escape])
+}
+
+/**
+ * Tastenkürzel für Datumsfelder (die selbst keine Buchstaben annehmen):
+ * h = heute, m = morgen, n = Freitag nächste Woche. `apply` bekommt das Datum als JJJJ-MM-TT.
+ */
+export function dateKeys(apply: (date: string) => void): (e: ReactKeyboardEvent<HTMLInputElement>) => void {
+  return (e) => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return
+    const date = dateFromKey(e.key, todayString())
+    if (!date) return
+    e.preventDefault()
+    e.stopPropagation()
+    apply(date)
+  }
 }
 
 export const labelStyle = (color: string): CSSProperties => ({ '--label': labelHex(color) }) as CSSProperties

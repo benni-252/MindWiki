@@ -2,6 +2,7 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import path from 'node:path'
 import { openDatabase } from '../src/main/db'
 import { WikiStore } from '../src/main/store'
+import { addDays, nextWeekFriday, todayString } from '../src/renderer/src/tasks/dates'
 import { launch, login, makeWorkDir, removeDir, shots } from './app'
 
 const workDir = makeWorkDir()
@@ -346,6 +347,70 @@ test('Kontextmenü einer Aufgabe: Status, Fälligkeit, Zuweisen, Löschen', asyn
   await expect(page.locator('.modal')).toContainText('Regeln prüfen')
   await page.locator('.modal').getByRole('button', { name: 'Abbrechen' }).click()
   await expect(rules).toBeVisible()
+  await expect(page.locator('.toast.error')).toHaveCount(0)
+  await app.close()
+  running = null
+})
+
+test('Kürzel in Datumsfeldern: h = heute, m = morgen, n = Freitag nächste Woche', async () => {
+  const file = path.join(workDir, 'Datum.db')
+  const setup = new WikiStore(openDatabase(file, 'Datum'), 'admin')
+  const bucket = setup.tasks.createBucket('Zu erledigen')
+  setup.tasks.createTask(bucket, 'Backup testen')
+  setup.db.close()
+  const saved = (title: string) => {
+    const store = new WikiStore(openDatabase(file, 'Datum'), 'test')
+    try {
+      return store.tasks.getTaskBoard().tasks.find((t) => t.title === title)
+    } finally {
+      store.db.close()
+    }
+  }
+  const today = todayString()
+
+  const { app, page } = await launch(workDir, 'Datum.db')
+  running = app
+  await page.getByRole('button', { name: 'Aufgaben', exact: true }).click()
+
+  // Details: Startdatum h, Fälligkeitsdatum n, dann m
+  await card(page, 'Backup testen').locator('.task-title').click()
+  const dialog = page.locator('.task-modal')
+  await expect(dialog.locator('.td-date-hint')).toContainText('Freitag nächste Woche')
+  const start = dialog.locator('label', { hasText: 'Startdatum' }).locator('input')
+  const due = dialog.locator('label', { hasText: 'Fälligkeitsdatum' }).locator('input')
+  await start.focus()
+  await page.keyboard.press('h')
+  await expect(start).toHaveValue(today)
+  await due.focus()
+  await page.keyboard.press('n')
+  await expect(due).toHaveValue(nextWeekFriday(today))
+  await expect.poll(() => saved('Backup testen')).toMatchObject({ startDate: today, dueDate: nextWeekFriday(today) })
+  await page.keyboard.press('Shift+M')
+  await expect(due).toHaveValue(addDays(today, 1))
+  await expect.poll(() => saved('Backup testen')?.dueDate).toBe(addDays(today, 1))
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+
+  // Beim Anlegen: Fällig m
+  const column = page.locator('.board-col', { hasText: 'Zu erledigen' })
+  await column.getByRole('button', { name: 'Aufgabe hinzufügen' }).click()
+  await column.getByLabel('Name der neuen Aufgabe').fill('Patchday vorbereiten')
+  await column.getByLabel('Fälligkeitsdatum').focus()
+  await page.keyboard.press('m')
+  await expect(column.getByLabel('Fälligkeitsdatum')).toHaveValue(addDays(today, 1))
+  await column.getByRole('button', { name: 'Aufgabe hinzufügen', exact: true }).last().click()
+  await expect(card(page, 'Patchday vorbereiten').locator('.due-chip')).toHaveText('Morgen')
+  await page.keyboard.press('Escape')
+
+  // Im Kontextmenü: eigenes Datum mit n, dann „Setzen“
+  await card(page, 'Patchday vorbereiten').click({ button: 'right' })
+  const menu = page.locator('.task-menu')
+  await menu.getByRole('button', { name: /Fälligkeit/ }).click()
+  await menu.getByLabel('Fälligkeitsdatum wählen').focus()
+  await page.keyboard.press('n')
+  await expect(menu.getByLabel('Fälligkeitsdatum wählen')).toHaveValue(nextWeekFriday(today))
+  await menu.getByRole('button', { name: 'Setzen' }).click()
+  await expect.poll(() => saved('Patchday vorbereiten')?.dueDate).toBe(nextWeekFriday(today))
   await expect(page.locator('.toast.error')).toHaveCount(0)
   await app.close()
   running = null

@@ -7,8 +7,8 @@ import { Modal } from '../dialogs/Modal'
 import { useWiki } from '../store'
 import { pathTo } from '../treeUtils'
 import { patchInBoard } from './board'
-import { todayString } from './dates'
-import { Avatar, LabelChip, PriorityIcon, ProgressIcon, useDismiss } from './parts'
+import { DATE_KEY_HINT, todayString } from './dates'
+import { Avatar, dateKeys, LabelChip, PriorityIcon, ProgressIcon, useDismiss } from './parts'
 import { copyTask, deleteTask, setProgress } from './taskActions'
 
 type Popover = 'assign' | 'labels' | 'article' | null
@@ -720,7 +720,9 @@ export function TaskDialog({ id }: { id: number }): React.JSX.Element | null {
               type="date"
               value={task.startDate ?? ''}
               max={task.dueDate ?? undefined}
+              title={DATE_KEY_HINT}
               onChange={(e) => void update(task, { startDate: e.target.value || null })}
+              onKeyDown={dateKeys((startDate) => void update(task, { startDate }))}
             />
           </label>
           <label>
@@ -730,7 +732,9 @@ export function TaskDialog({ id }: { id: number }): React.JSX.Element | null {
               value={task.dueDate ?? ''}
               min={task.startDate ?? undefined}
               className={task.dueDate && !done && task.dueDate < todayString() ? 'late' : ''}
+              title={DATE_KEY_HINT}
               onChange={(e) => void update(task, { dueDate: e.target.value || null })}
+              onKeyDown={dateKeys((dueDate) => void update(task, { dueDate }))}
             />
           </label>
           <div className="td-field">
@@ -762,6 +766,10 @@ export function TaskDialog({ id }: { id: number }): React.JSX.Element | null {
             </span>
           </div>
         </div>
+
+        <p className="td-date-hint">
+          Tipp für die Datumsfelder: <kbd>h</kbd> heute · <kbd>m</kbd> morgen · <kbd>n</kbd> Freitag nächste Woche
+        </p>
 
         <section className="td-section">
           <div className="td-section-head">

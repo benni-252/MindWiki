@@ -111,6 +111,28 @@ export function quickDueOptions(today: string): { label: string; date: string }[
   ]
   const week = dueDropDate('week', today)
   if (week) options.push({ label: 'Diese Woche', date: week })
-  options.push({ label: 'Nächste Woche', date: fridayOf(addDays(today, 7)) })
+  options.push({ label: 'Nächste Woche', date: nextWeekFriday(today) })
   return options
+}
+
+/** Freitag der nächsten Woche (Wochen von Montag bis Sonntag) */
+export function nextWeekFriday(today: string): string {
+  return fridayOf(addDays(today, 7))
+}
+
+/** Kürzel in Datumsfeldern – als Tooltip und Hinweis */
+export const DATE_KEY_HINT = 'h = heute, m = morgen, n = Freitag nächste Woche'
+
+/** Datum zu einem Kürzel im Datumsfeld: h = heute, m = morgen, n = Freitag nächste Woche; sonst null */
+export function dateFromKey(key: string, today: string): string | null {
+  switch (key.toLowerCase()) {
+    case 'h':
+      return today
+    case 'm':
+      return addDays(today, 1)
+    case 'n':
+      return nextWeekFriday(today)
+    default:
+      return null
+  }
 }
