@@ -4046,6 +4046,16 @@ input.fs-label::-webkit-calendar-picker-indicator {
 .task-list tbody tr:last-child td {
   border-bottom: none;
 }
+/* Überfällig: die ganze Zeile rot, wie die Karte auf dem Board */
+.task-list tbody tr.overdue:not(.menu-open) td {
+  background: var(--danger-soft);
+}
+.task-list tbody tr.overdue:not(.menu-open):hover td {
+  background: color-mix(in srgb, var(--danger) 16%, var(--surface));
+}
+.task-list tbody tr.overdue td:first-child {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
 .task-list .tl-check {
   width: 36px;
   padding-right: 0;

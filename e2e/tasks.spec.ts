@@ -238,6 +238,11 @@ test('Beispiel-Aufgaben im Beispiel-Wiki (Bild für die Anleitung)', async () =>
     await page.mouse.move(700, 820)
     await page.waitForTimeout(300)
     await page.screenshot({ path: path.join(shots, 'aufgaben.png') })
+    // Auch in der Liste ist die überfällige Zeile rot
+    await page.getByRole('tab', { name: 'Liste' }).click()
+    await expect(page.locator('.task-list tbody tr.overdue')).toHaveCount(1)
+    await expect(page.locator('.task-list tbody tr.overdue')).toContainText('VPN-Zertifikat erneuern')
+    await page.screenshot({ path: path.join(shots, 'aufgaben-liste.png') })
     await app.close()
     running = null
   } finally {
