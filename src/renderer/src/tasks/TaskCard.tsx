@@ -3,7 +3,7 @@ import type { DragEvent } from 'react'
 import type { Task, TaskBoard } from '../../../shared/types'
 import { wiki } from '../api'
 import { useWiki } from '../store'
-import { patchInBoard } from './board'
+import { isOverdue, patchInBoard } from './board'
 import { Avatars, DueChip, LabelChip, PriorityIcon, ProgressIcon } from './parts'
 import { deleteTask, setProgress } from './taskActions'
 import { useTaskMenu } from './TaskMenu'
@@ -20,6 +20,7 @@ interface Props {
 export function TaskCard({ task, board, today, dragging = false, onDragStart, onDragEnd }: Props): React.JSX.Element {
   const { menu, menuTaskId, openMenu, onContextMenu } = useTaskMenu()
   const done = task.progress === 'done'
+  const late = isOverdue(task, today)
   const labels = task.labelIds.map((id) => board.labels.find((l) => l.id === id)).filter((l) => l != null)
   const checked = task.checklist.filter((c) => c.checked).length
   const s = useWiki.getState()
@@ -36,7 +37,7 @@ export function TaskCard({ task, board, today, dragging = false, onDragStart, on
 
   return (
     <div
-      className={`task-card ${done ? 'done' : ''} ${dragging ? 'dragging' : ''} ${menuTaskId != null ? 'menu-open' : ''}`}
+      className={`task-card ${done ? 'done' : ''} ${late ? 'overdue' : ''} ${dragging ? 'dragging' : ''} ${menuTaskId != null ? 'menu-open' : ''}`}
       data-task-id={task.id}
       data-open={done ? undefined : '1'}
       role="button"

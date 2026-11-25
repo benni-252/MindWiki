@@ -231,6 +231,10 @@ test('Beispiel-Aufgaben im Beispiel-Wiki (Bild für die Anleitung)', async () =>
     await page.getByRole('button', { name: /^Aufgaben/ }).click()
     await expect(page.locator('.board-col')).toHaveCount(4)
     await expect(card(page, 'Laufwerk D:').locator('.task-preview-checklist li')).toHaveCount(5)
+    // Überfällige Karten sind rot – nicht die von heute und nicht erledigte mit altem Datum
+    await expect(card(page, 'VPN-Zertifikat erneuern')).toHaveClass(/\boverdue\b/)
+    await expect(card(page, 'Laufwerk D:')).not.toHaveClass(/\boverdue\b/)
+    await expect(page.locator('.task-card.overdue')).toHaveCount(1)
     await page.mouse.move(700, 820)
     await page.waitForTimeout(300)
     await page.screenshot({ path: path.join(shots, 'aufgaben.png') })
