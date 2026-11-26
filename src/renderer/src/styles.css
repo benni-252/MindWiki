@@ -3591,6 +3591,19 @@ input.fs-label::-webkit-calendar-picker-indicator {
   color: var(--muted);
   text-decoration: line-through;
 }
+/* Überfällig: die ganze Karte rot */
+.task-card.overdue {
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: var(--danger-soft);
+  box-shadow: inset 3px 0 0 var(--danger), 0 1px 2px rgb(16 24 40 / 6%);
+}
+.task-card.overdue:hover {
+  border-color: var(--danger);
+  box-shadow: inset 3px 0 0 var(--danger), var(--shadow);
+}
+.task-card.overdue:focus-visible {
+  box-shadow: inset 3px 0 0 var(--danger), 0 0 0 2px var(--accent);
+}
 .task-labels {
   display: flex;
   flex-wrap: wrap;
@@ -4032,6 +4045,16 @@ input.fs-label::-webkit-calendar-picker-indicator {
 }
 .task-list tbody tr:last-child td {
   border-bottom: none;
+}
+/* Überfällig: die ganze Zeile rot, wie die Karte auf dem Board */
+.task-list tbody tr.overdue:not(.menu-open) td {
+  background: var(--danger-soft);
+}
+.task-list tbody tr.overdue:not(.menu-open):hover td {
+  background: color-mix(in srgb, var(--danger) 16%, var(--surface));
+}
+.task-list tbody tr.overdue td:first-child {
+  box-shadow: inset 3px 0 0 var(--danger);
 }
 .task-list .tl-check {
   width: 36px;

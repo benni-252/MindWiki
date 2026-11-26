@@ -2,6 +2,19 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.14.0
+
+**Neu: Überfällige Aufgaben sind rot**
+- Auf dem Board ist die ganze Karte einer überfälligen Aufgabe rot hinterlegt, mit rotem Rand links – so fällt sie zwischen den anderen sofort auf.
+- In der **Liste** ist die Zeile einer überfälligen Aufgabe ebenso rot.
+- Überfällig heißt: Das Fälligkeitsdatum liegt vor heute und die Aufgabe ist nicht erledigt. Aufgaben, die heute fällig sind, und erledigte Aufgaben bleiben wie bisher.
+
+**Download**
+- `MindWiki-Setup-1.14.0.exe` – Installer (mit automatischen Updates)
+- `MindWiki-1.14.0-portable.exe` – ohne Installation starten
+
+Keine Änderung an der Wiki-Datei – 1.11 bis 1.14 können sie gleichzeitig nutzen.
+
 ## 1.13.0
 
 **Neu: Datum per Buchstabe eintragen**

@@ -4,7 +4,7 @@ import { PRIORITY_LABEL, PRIORITY_ORDER, PROGRESS_LABEL, PROGRESS_ORDER, TASK_LI
 import type { Task, TaskBoard, TaskPriority, TaskProgress } from '../../../shared/types'
 import { wiki } from '../api'
 import { useWiki } from '../store'
-import { sortTasks, type SortKey } from './board'
+import { isOverdue, sortTasks, type SortKey } from './board'
 import { Avatars, DueChip, LabelChip, PriorityIcon, ProgressIcon } from './parts'
 import { setPriority, setProgress } from './taskActions'
 import { useTaskMenu } from './TaskMenu'
@@ -87,7 +87,7 @@ export function TaskList({
             return (
               <tr
                 key={t.id}
-                className={`${done ? 'done' : ''} ${menuTaskId === t.id ? 'menu-open' : ''}`}
+                className={`${done ? 'done' : ''} ${isOverdue(t, today) ? 'overdue' : ''} ${menuTaskId === t.id ? 'menu-open' : ''}`}
                 onClick={() => s.openTask(t.id)}
                 onContextMenu={onContextMenu(t.id)}
               >
