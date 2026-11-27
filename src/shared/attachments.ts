@@ -82,3 +82,26 @@ export function formatBytes(bytes: number): string {
   }
   return `${value.toLocaleString('de-DE', { maximumFractionDigits: value < 10 ? 1 : 0 })} ${units[unit]}`
 }
+
+/** Warum eine Datei nicht angehängt werden kann – null, wenn sie geht (`name` bereits bereinigt). */
+export function attachmentProblem(name: string, size: number): string | null {
+  if (isBlockedAttachment(name)) {
+    return `„${name}“ kann nicht angehängt werden: Programme und Skripte sind aus Sicherheitsgründen gesperrt.`
+  }
+  if (size > MAX_ATTACHMENT_BYTES) {
+    return `„${name}“ ist zu groß (${formatBytes(size)}) – höchstens ${formatBytes(MAX_ATTACHMENT_BYTES)} pro Datei.`
+  }
+  if (size === 0) return `„${name}“ ist leer.`
+  return null
+}
+
+/** Gibt es den Namen schon (ohne Groß-/Kleinschreibung), wird daraus „Name (2).pdf“, „Name (3).pdf“ … */
+export function uniqueAttachmentName(name: string, existing: string[]): string {
+  const taken = new Set(existing.map((n) => n.toLocaleLowerCase('de')))
+  if (!taken.has(name.toLocaleLowerCase('de'))) return name
+  const dot = name.lastIndexOf('.')
+  const [base, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, '']
+  let n = 2
+  while (taken.has(`${base} (${n})${ext}`.toLocaleLowerCase('de'))) n++
+  return `${base} (${n})${ext}`
+}

@@ -1,9 +1,10 @@
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import fs from 'node:fs'
 import path from 'node:path'
 import { openDatabase } from '../src/main/db'
 import { WikiStore } from '../src/main/store'
 import { addDays, nextWeekFriday, todayString } from '../src/renderer/src/tasks/dates'
-import { launch, login, makeWorkDir, removeDir, shots } from './app'
+import { dropFiles, launch, login, makeWorkDir, removeDir, shots } from './app'
 
 const workDir = makeWorkDir()
 const dbFile = path.join(workDir, 'Team.db')
@@ -423,4 +424,125 @@ test('Kürzel in Datumsfeldern: h = heute, m = morgen, n = Freitag nächste Woch
   await expect(page.locator('.toast.error')).toHaveCount(0)
   await app.close()
   running = null
+})
+
+test('Anhänge an Aufgaben; Karten im Bucket „Erledigt“ sind erledigt', async () => {
+  const dir = makeWorkDir()
+  const file = path.join(dir, 'Anhaenge.db')
+  const withStore = <T>(fn: (store: WikiStore) => T): T => {
+    const store = new WikiStore(openDatabase(file, 'Team'), 'test')
+    try {
+      return fn(store)
+    } finally {
+      store.db.close()
+    }
+  }
+  const saved = (title: string) => withStore((s) => s.tasks.getTaskBoard().tasks.find((t) => t.title === title))
+  const attachments = (title: string) =>
+    withStore((s) => {
+      const t = s.tasks.getTaskBoard().tasks.find((x) => x.title === title)
+      return t ? s.tasks.getTaskAttachments(t.id).map((a) => a.name) : []
+    })
+  try {
+    withStore((s) => {
+      const todo = s.tasks.createBucket('Zu erledigen')
+      s.tasks.createBucket('Erledigt')
+      s.tasks.createTask(todo, 'Toner bestellen')
+      s.tasks.createTask(todo, 'Drucker tauschen')
+    })
+    const { app, page } = await launch(dir, 'Anhaenge.db')
+    running = app
+    const toast = (text: string | RegExp) => page.locator('.toast', { hasText: text })
+    await page.keyboard.press('Control+2')
+    const printer = card(page, 'Drucker tauschen')
+    await expect(printer).toBeVisible()
+
+    // Aus dem Explorer auf die Karte gezogen
+    await dropFiles(page, '.task-card:has-text("Drucker tauschen")', [
+      { name: 'Angebot.pdf', text: '%PDF Angebot Drucker', type: 'application/pdf' }
+    ])
+    await expect(toast('Datei angehängt.')).toBeVisible()
+    await expect(printer.getByTitle('1 Anhang')).toHaveText('1')
+
+    // Über das Kontextmenü mit dem Datei-Dialog – ein Programm wird abgelehnt
+    const manual = path.join(dir, 'Anleitung.txt')
+    const program = path.join(dir, 'treiber.exe')
+    fs.writeFileSync(manual, 'Fach 2 zuerst leeren')
+    fs.writeFileSync(program, 'MZ')
+    await app.evaluate(({ dialog }, files) => {
+      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: files })) as typeof dialog.showOpenDialog
+    }, [manual, program])
+    await printer.click({ button: 'right' })
+    await page.locator('.task-menu').getByRole('button', { name: 'Datei anhängen…' }).click()
+    await expect(toast('„treiber.exe“ kann nicht angehängt werden')).toBeVisible()
+    await expect(printer.getByTitle('2 Anhänge')).toHaveText('2')
+    expect(attachments('Drucker tauschen')).toEqual(['Angebot.pdf', 'Anleitung.txt'])
+
+    // Details: Liste, hineinziehen, öffnen, speichern, entfernen
+    await printer.locator('.task-title').click()
+    const section = page.locator('.task-modal section.attachments')
+    await expect(section.locator('.att-name')).toHaveText(['Angebot.pdf', 'Anleitung.txt'])
+    await expect(section.locator('.att-meta').first()).toContainText('20 Byte · admin')
+    await dropFiles(page, '.task-modal section.attachments', [{ name: 'Foto.png', text: 'PNG', type: 'image/png' }])
+    await expect(section.locator('.att-name')).toHaveText(['Angebot.pdf', 'Anleitung.txt', 'Foto.png'])
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: path.join(shots, 'aufgaben-anhaenge.png') })
+
+    await app.evaluate(({ shell }) => {
+      const g = globalThis as unknown as { opened: string[] }
+      g.opened = []
+      shell.openPath = async (p: string) => {
+        g.opened.push(p)
+        return ''
+      }
+    })
+    await section.locator('.att-name', { hasText: 'Angebot.pdf' }).click()
+    await expect.poll(() => app.evaluate(() => (globalThis as unknown as { opened: string[] }).opened.length)).toBe(1)
+    const opened = await app.evaluate(() => (globalThis as unknown as { opened: string[] }).opened[0])
+    expect(path.basename(opened)).toBe('Angebot.pdf')
+    expect(fs.readFileSync(opened, 'utf8')).toBe('%PDF Angebot Drucker')
+    expect(fs.statSync(opened).mode & 0o222).toBe(0)
+
+    const copy = path.join(dir, 'Kopie Anleitung.txt')
+    await app.evaluate(({ dialog }, target) => {
+      dialog.showSaveDialog = (async () => ({ canceled: false, filePath: target })) as typeof dialog.showSaveDialog
+    }, copy)
+    await section.getByRole('button', { name: 'Anleitung.txt speichern unter' }).click()
+    await expect(toast(`Gespeichert: ${copy}`)).toBeVisible()
+    expect(fs.readFileSync(copy, 'utf8')).toBe('Fach 2 zuerst leeren')
+
+    await section.getByRole('button', { name: 'Foto.png entfernen' }).click()
+    await page.getByRole('dialog', { name: 'Anhang entfernen?' }).getByRole('button', { name: 'Entfernen' }).click()
+    await expect(section.locator('.att-name')).toHaveText(['Angebot.pdf', 'Anleitung.txt'])
+    await page.locator('.task-modal').getByRole('button', { name: 'Fertig' }).click()
+    await expect(printer.getByTitle('2 Anhänge')).toHaveText('2')
+
+    // In den Bucket „Erledigt“ gezogen: abgehakt und dort sichtbar (nicht eingeklappt)
+    const doneCol = column(page, 'Erledigt')
+    await card(page, 'Toner bestellen').dragTo(doneCol.locator('.col-body'))
+    await expect(doneCol.locator('.task-card')).toHaveText(/Toner bestellen/)
+    await expect(card(page, 'Toner bestellen')).toHaveClass(/\bdone\b/)
+    await expect(doneCol.locator('.done-toggle')).toHaveCount(0)
+    await expect.poll(() => saved('Toner bestellen')?.progress).toBe('done')
+    await expect.poll(() => saved('Toner bestellen')?.completedBy).toBe('admin')
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: path.join(shots, 'aufgaben-erledigt.png') })
+
+    // Wieder herausgezogen: offen
+    await card(page, 'Toner bestellen').dragTo(column(page, 'Zu erledigen').locator('.col-body'))
+    await expect(column(page, 'Zu erledigen').locator('.task-card', { hasText: 'Toner bestellen' })).not.toHaveClass(/\bdone\b/)
+    await expect.poll(() => saved('Toner bestellen')?.progress).toBe('open')
+
+    // Direkt in „Erledigt“ angelegt: gleich erledigt
+    await doneCol.getByRole('button', { name: 'Aufgabe hinzufügen' }).click()
+    await doneCol.getByLabel('Name der neuen Aufgabe').fill('Alte Patronen entsorgt')
+    await page.keyboard.press('Enter')
+    await expect(card(page, 'Alte Patronen entsorgt')).toHaveClass(/\bdone\b/)
+    await expect.poll(() => saved('Alte Patronen entsorgt')?.progress).toBe('done')
+    await expect(page.locator('.toast.error', { hasNotText: 'treiber.exe' })).toHaveCount(0)
+    await app.close()
+    running = null
+  } finally {
+    removeDir(dir)
+  }
 })

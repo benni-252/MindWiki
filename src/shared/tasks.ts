@@ -39,6 +39,22 @@ export const labelHex = (color: string): string => LABEL_COLORS.find((c) => c.id
 /** Name des Buckets, der angelegt wird, wenn es noch keinen gibt */
 export const DEFAULT_BUCKET = 'Zu erledigen'
 
+/** Aufgaben in einem Bucket mit diesem Namen gelten als erledigt (Groß-/Kleinschreibung egal) */
+export const DONE_BUCKET = 'Erledigt'
+
+export const isDoneBucket = (name: string): boolean =>
+  name.trim().toLocaleLowerCase('de') === DONE_BUCKET.toLocaleLowerCase('de')
+
+/**
+ * Fortschritt, wenn eine Aufgabe in einen anderen Bucket wechselt: in „Erledigt“ hinein → erledigt,
+ * aus „Erledigt“ heraus → wieder offen. undefined = bleibt, wie er ist.
+ */
+export function progressForBucketChange(progress: TaskProgress, fromBucket: string, toBucket: string): TaskProgress | undefined {
+  if (isDoneBucket(toBucket)) return progress === 'done' ? undefined : 'done'
+  if (isDoneBucket(fromBucket) && progress === 'done') return 'open'
+  return undefined
+}
+
 export const TASK_LIMITS = {
   title: 255,
   notes: 20_000,

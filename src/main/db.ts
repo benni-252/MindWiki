@@ -217,6 +217,27 @@ export const OPTIONAL_TABLES = `
     text TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id, at);
+
+  -- Anhänge an Aufgaben. Der Inhalt liegt in task_files, nicht in files: Ältere Versionen räumen
+  -- files auf und würden Inhalte löschen, auf die nur Aufgaben zeigen. Kopien teilen sich den Inhalt.
+  CREATE TABLE IF NOT EXISTS task_files (
+    id INTEGER PRIMARY KEY,
+    data BLOB NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS task_attachments (
+    id INTEGER PRIMARY KEY,
+    task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    file_id INTEGER NOT NULL REFERENCES task_files(id),
+    name TEXT NOT NULL,
+    mime TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    added_by TEXT,
+    added_at TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE INDEX IF NOT EXISTS idx_task_attachments_task ON task_attachments(task_id, position);
+  CREATE INDEX IF NOT EXISTS idx_task_attachments_file ON task_attachments(file_id);
 `
 
 export class NotAWikiError extends Error {}

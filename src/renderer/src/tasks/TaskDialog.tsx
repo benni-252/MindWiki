@@ -6,10 +6,11 @@ import { errorMessage, setPending, wiki } from '../api'
 import { Modal } from '../dialogs/Modal'
 import { useWiki } from '../store'
 import { pathTo } from '../treeUtils'
-import { patchInBoard } from './board'
+import { moveInBoard, patchInBoard } from './board'
 import { DATE_KEY_HINT, todayString } from './dates'
 import { Avatar, dateKeys, LabelChip, PriorityIcon, ProgressIcon, useDismiss } from './parts'
 import { copyTask, deleteTask, setProgress } from './taskActions'
+import { TaskAttachments } from './TaskAttachments'
 
 type Popover = 'assign' | 'labels' | 'article' | null
 
@@ -568,6 +569,16 @@ export function TaskDialog({ id }: { id: number }): React.JSX.Element | null {
   const checked = task.checklist.filter((c) => c.checked).length
   const deleted = (name: string): boolean => board.users.find((u) => u.username.toLowerCase() === name.toLowerCase())?.deleted ?? false
   const togglePreview = (kind: 'notes' | 'checklist'): void => void update(task, { preview: task.preview === kind ? null : kind })
+  /** Oben im neuen Bucket einreihen; „Erledigt“ hakt die Aufgabe dabei ab (siehe moveInBoard) */
+  const moveToBucket = (bucketId: number): void => {
+    const first = board.tasks
+      .filter((t) => t.bucketId === bucketId && t.id !== task.id)
+      .sort((a, b) => a.position - b.position || a.id - b.id)[0]
+    void s.taskAct(
+      () => wiki.updateTask(task.id, { bucketId }),
+      (b) => moveInBoard(b, task.id, bucketId, first?.id ?? null)
+    )
+  }
 
   return (
     <Modal
@@ -678,7 +689,7 @@ export function TaskDialog({ id }: { id: number }): React.JSX.Element | null {
         <div className="td-grid">
           <label>
             <span>Bucket</span>
-            <select value={task.bucketId} onChange={(e) => void update(task, { bucketId: Number(e.target.value) })}>
+            <select value={task.bucketId} onChange={(e) => moveToBucket(Number(e.target.value))}>
               {board.buckets.map((b) => (
                 <option key={b.id} value={b.id}>
                   {b.name}
@@ -805,6 +816,8 @@ export function TaskDialog({ id }: { id: number }): React.JSX.Element | null {
           </div>
           <Checklist task={task} />
         </section>
+
+        <TaskAttachments task={task} />
 
         <section className="td-section">
           <div className="td-section-head">

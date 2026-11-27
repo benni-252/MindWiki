@@ -1,5 +1,12 @@
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
-import { cleanAttachmentName, formatBytes, isBlockedAttachment, MAX_ATTACHMENT_BYTES, mimeOf } from '../shared/attachments'
+import {
+  cleanAttachmentName,
+  formatBytes,
+  isBlockedAttachment,
+  MAX_ATTACHMENT_BYTES,
+  mimeOf,
+  uniqueAttachmentName
+} from '../shared/attachments'
 import { findTemplate, SECRET_LABEL, templateDoc, type ArticleTemplate } from '../shared/templates'
 import {
   IMAGE_URL_PATTERN,
@@ -1680,14 +1687,7 @@ export class WikiStore {
     }
     if (data.byteLength === 0) throw new WikiError(`${q(clean)} ist leer.`)
     // Gleicher Name schon da: „Name (2).pdf“
-    const taken = new Set(this.getAttachments(articleId).map((x) => x.name.toLocaleLowerCase('de')))
-    if (taken.has(clean.toLocaleLowerCase('de'))) {
-      const dot = clean.lastIndexOf('.')
-      const [base, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, '']
-      let n = 2
-      while (taken.has(`${base} (${n})${ext}`.toLocaleLowerCase('de'))) n++
-      clean = `${base} (${n})${ext}`
-    }
+    clean = uniqueAttachmentName(clean, this.getAttachments(articleId).map((x) => x.name))
     return this.tx(() => {
       const fileId = this.run('INSERT INTO files (data, created_at) VALUES (?, ?)', data, this.now())
       const id = this.run(

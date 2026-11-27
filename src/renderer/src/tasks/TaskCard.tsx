@@ -1,11 +1,12 @@
-import { Ellipsis, FileText, ListChecks, MessageSquare, StickyNote } from 'lucide-react'
-import type { DragEvent } from 'react'
+import { Ellipsis, FileText, ListChecks, MessageSquare, Paperclip, StickyNote } from 'lucide-react'
+import { useState, type DragEvent } from 'react'
 import type { Task, TaskBoard } from '../../../shared/types'
 import { wiki } from '../api'
+import { hasFiles } from '../article/Attachments'
 import { useWiki } from '../store'
 import { isOverdue, patchInBoard } from './board'
 import { Avatars, DueChip, LabelChip, PriorityIcon, ProgressIcon } from './parts'
-import { deleteTask, setProgress } from './taskActions'
+import { attachFilesToTask, deleteTask, setProgress } from './taskActions'
 import { useTaskMenu } from './TaskMenu'
 
 interface Props {
@@ -21,6 +22,8 @@ export function TaskCard({ task, board, today, dragging = false, onDragStart, on
   const { menu, menuTaskId, openMenu, onContextMenu } = useTaskMenu()
   const done = task.progress === 'done'
   const late = isOverdue(task, today)
+  // Datei aus dem Explorer über der Karte
+  const [fileOver, setFileOver] = useState(false)
   const labels = task.labelIds.map((id) => board.labels.find((l) => l.id === id)).filter((l) => l != null)
   const checked = task.checklist.filter((c) => c.checked).length
   const s = useWiki.getState()
@@ -37,7 +40,7 @@ export function TaskCard({ task, board, today, dragging = false, onDragStart, on
 
   return (
     <div
-      className={`task-card ${done ? 'done' : ''} ${late ? 'overdue' : ''} ${dragging ? 'dragging' : ''} ${menuTaskId != null ? 'menu-open' : ''}`}
+      className={`task-card ${done ? 'done' : ''} ${late ? 'overdue' : ''} ${fileOver ? 'file-over' : ''} ${dragging ? 'dragging' : ''} ${menuTaskId != null ? 'menu-open' : ''}`}
       data-task-id={task.id}
       data-open={done ? undefined : '1'}
       role="button"
@@ -63,6 +66,25 @@ export function TaskCard({ task, board, today, dragging = false, onDragStart, on
         }
       }}
       onContextMenu={onContextMenu(task.id)}
+      // Dateien auf die Karte ziehen hängt sie an (Karten selbst ziehen bleibt unberührt: dabei gibt es keine Dateien)
+      onDragOver={(e) => {
+        if (!hasFiles(e)) return
+        e.preventDefault()
+        e.stopPropagation()
+        e.dataTransfer.dropEffect = 'copy'
+        if (!fileOver) setFileOver(true)
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFileOver(false)
+      }}
+      onDrop={(e) => {
+        if (!hasFiles(e)) return
+        e.preventDefault()
+        e.stopPropagation()
+        setFileOver(false)
+        const files = [...e.dataTransfer.files]
+        if (files.length > 0) void attachFilesToTask(task.id, files)
+      }}
     >
       {labels.length > 0 && (
         <div className="task-labels">
@@ -133,6 +155,15 @@ export function TaskCard({ task, board, today, dragging = false, onDragStart, on
             {task.commentCount}
           </span>
         )}
+        {task.attachmentCount > 0 && (
+          <span
+            className="task-badge"
+            title={`${task.attachmentCount} ${task.attachmentCount === 1 ? 'Anhang' : 'Anhänge'}`}
+          >
+            <Paperclip size={14} />
+            {task.attachmentCount}
+          </span>
+        )}
         {task.articleId != null && (
           <button
             className={`task-article ${task.articleTitle ? '' : 'missing'}`}
@@ -151,6 +182,7 @@ export function TaskCard({ task, board, today, dragging = false, onDragStart, on
           <Avatars names={task.assignees} users={board.users} />
         </span>
       </div>
+      {fileOver && <div className="task-file-drop">Loslassen zum Anhängen</div>}
       {menu}
     </div>
   )

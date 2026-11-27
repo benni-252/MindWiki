@@ -16,7 +16,7 @@ import { errorMessage, wiki } from '../api'
 import { useWiki } from '../store'
 import { formatWhen } from '../treeUtils'
 
-function FileIcon({ name }: { name: string }): React.JSX.Element {
+export function FileIcon({ name }: { name: string }): React.JSX.Element {
   const ext = extensionOf(name)
   if (['xls', 'xlsx', 'ods', 'csv'].includes(ext)) return <FileSpreadsheet size={18} />
   if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp'].includes(ext)) return <FileImage size={18} />
@@ -26,7 +26,7 @@ function FileIcon({ name }: { name: string }): React.JSX.Element {
 }
 
 /** Zieht jemand Dateien (nicht Text) über den Bereich? */
-const hasFiles = (e: DragEvent): boolean => [...e.dataTransfer.types].includes('Files')
+export const hasFiles = (e: DragEvent): boolean => [...e.dataTransfer.types].includes('Files')
 
 /** Angehängte Dokumente: öffnen, speichern, anhängen (Knopf oder Ziehen aus dem Explorer), entfernen. */
 export function Attachments({ articleId, readOnly }: { articleId: number; readOnly: boolean }): React.JSX.Element | null {

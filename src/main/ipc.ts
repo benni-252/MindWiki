@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { cleanAttachmentName, formatBytes, isBlockedAttachment, MAX_ATTACHMENT_BYTES } from '../shared/attachments'
-import { RPC_METHODS, TASK_METHODS, type Role, type TaskRpc, type WikiRpc } from '../shared/types'
+import { RPC_METHODS, TASK_METHODS, type AttachResult, type Role, type TaskRpc, type WikiRpc } from '../shared/types'
 import { backupTo, NotAWikiError } from './db'
 import { friendlyDbError } from './dbErrors'
 import { articleToHtml } from './exportHtml'
@@ -32,6 +32,9 @@ type FileOps =
   | 'addAttachmentFiles'
   | 'openAttachment'
   | 'saveAttachmentAs'
+  | 'addTaskAttachmentFiles'
+  | 'openTaskAttachment'
+  | 'saveTaskAttachmentAs'
   | 'getUpdateState'
   | 'checkForUpdates'
   | 'downloadUpdate'
@@ -168,6 +171,69 @@ function cleanupOpenedAttachments(): void {
   }
 }
 
+type StoredFile = { name: string; data: Uint8Array } | undefined
+
+/** Datei-Dialog zum Anhängen (mehrere Dateien); `add` legt eine Datei ab und wirft bei Problemen. */
+async function pickAndAttach(win: BrowserWindow | null, add: (name: string, data: Uint8Array) => unknown): Promise<AttachResult> {
+  const options = {
+    title: 'Datei anhängen',
+    buttonLabel: 'Anhängen',
+    properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>
+  }
+  const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+  const skipped: string[] = []
+  let added = 0
+  if (result.canceled) return { added, skipped }
+  for (const file of result.filePaths) {
+    const name = path.basename(file)
+    try {
+      // Größe vorher prüfen, damit riesige Dateien gar nicht erst gelesen werden
+      const size = fs.statSync(file).size
+      if (size > MAX_ATTACHMENT_BYTES) {
+        skipped.push(`„${name}“ ist zu groß (${formatBytes(size)}) – höchstens ${formatBytes(MAX_ATTACHMENT_BYTES)} pro Datei.`)
+        continue
+      }
+      add(name, fs.readFileSync(file))
+      added++
+    } catch (err) {
+      const friendly = friendlyDbError(err)
+      const message = friendly instanceof Error ? friendly.message : String(friendly)
+      skipped.push(friendly instanceof WikiError ? message : `„${name}“ konnte nicht gelesen werden: ${message}`)
+    }
+  }
+  return { added, skipped }
+}
+
+/** Öffnet eine schreibgeschützte Kopie mit dem passenden Programm (`key` trennt die Temp-Ordner). */
+async function openStoredFile(file: StoredFile, key: string): Promise<void> {
+  if (!file) throw new WikiError('Diesen Anhang gibt es nicht mehr.')
+  if (isBlockedAttachment(file.name)) {
+    throw new WikiError('Aus Sicherheitsgründen öffnet MindWiki Programme und Skripte nicht.')
+  }
+  cleanupOpenedAttachments()
+  const dir = path.join(ATTACHMENT_TEMP(), `${key}-${Date.now()}`)
+  fs.mkdirSync(dir, { recursive: true })
+  const target = path.join(dir, cleanAttachmentName(file.name))
+  fs.writeFileSync(target, file.data)
+  // Schreibgeschützt: Änderungen an der Kopie würden nicht ins Wiki zurückfließen
+  fs.chmodSync(target, 0o444)
+  const error = await shell.openPath(target)
+  if (error) throw new WikiError(`Der Anhang konnte nicht geöffnet werden: ${error}`)
+}
+
+/** „Speichern unter …“; liefert den Pfad oder null (abgebrochen) */
+async function saveStoredFileAs(win: BrowserWindow | null, file: StoredFile): Promise<string | null> {
+  if (!file) throw new WikiError('Diesen Anhang gibt es nicht mehr.')
+  const options = {
+    title: 'Anhang speichern',
+    defaultPath: path.join(app.getPath('documents'), cleanAttachmentName(file.name))
+  }
+  const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+  if (result.canceled || !result.filePath) return null
+  fs.writeFileSync(result.filePath, file.data)
+  return result.filePath
+}
+
 /** Nicht gespeicherte Texte: im Benutzerordner dieses Rechners, je Wiki-Datei und Benutzer. */
 function unsavedStore(): { store: UnsavedStore; db: string; user: string } {
   const session = currentSession()
@@ -212,68 +278,19 @@ export function registerIpc(
       return result.filePath
     },
 
-    addAttachmentFiles: async (articleId) => {
-      const win = getWindow()
-      const options = {
-        title: 'Datei anhängen',
-        buttonLabel: 'Anhängen',
-        properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>
-      }
-      const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
-      const skipped: string[] = []
-      let added = 0
-      if (result.canceled) return { added, skipped }
+    addAttachmentFiles: (articleId) => {
       const store = currentStore()
-      for (const file of result.filePaths) {
-        const name = path.basename(file)
-        try {
-          // Größe vorher prüfen, damit riesige Dateien gar nicht erst gelesen werden
-          const size = fs.statSync(file).size
-          if (size > MAX_ATTACHMENT_BYTES) {
-            skipped.push(`„${name}“ ist zu groß (${formatBytes(size)}) – höchstens ${formatBytes(MAX_ATTACHMENT_BYTES)} pro Datei.`)
-            continue
-          }
-          store.addAttachment(articleId, name, fs.readFileSync(file))
-          added++
-        } catch (err) {
-          const friendly = friendlyDbError(err)
-          const message = friendly instanceof Error ? friendly.message : String(friendly)
-          skipped.push(friendly instanceof WikiError ? message : `„${name}“ konnte nicht gelesen werden: ${message}`)
-        }
-      }
-      return { added, skipped }
+      return pickAndAttach(getWindow(), (name, data) => store.addAttachment(articleId, name, data))
     },
+    openAttachment: (id) => openStoredFile(currentStore().getAttachmentFile(id), String(id)),
+    saveAttachmentAs: (id) => saveStoredFileAs(getWindow(), currentStore().getAttachmentFile(id)),
 
-    openAttachment: async (id) => {
-      const file = currentStore().getAttachmentFile(id)
-      if (!file) throw new WikiError('Diesen Anhang gibt es nicht mehr.')
-      if (isBlockedAttachment(file.name)) {
-        throw new WikiError('Aus Sicherheitsgründen öffnet MindWiki Programme und Skripte nicht.')
-      }
-      cleanupOpenedAttachments()
-      const dir = path.join(ATTACHMENT_TEMP(), `${id}-${Date.now()}`)
-      fs.mkdirSync(dir, { recursive: true })
-      const target = path.join(dir, cleanAttachmentName(file.name))
-      fs.writeFileSync(target, file.data)
-      // Schreibgeschützt: Änderungen an der Kopie würden nicht ins Wiki zurückfließen
-      fs.chmodSync(target, 0o444)
-      const error = await shell.openPath(target)
-      if (error) throw new WikiError(`Der Anhang konnte nicht geöffnet werden: ${error}`)
+    addTaskAttachmentFiles: (taskId) => {
+      const tasks = currentStore().tasks
+      return pickAndAttach(getWindow(), (name, data) => tasks.addTaskAttachment(taskId, name, data))
     },
-
-    saveAttachmentAs: async (id) => {
-      const file = currentStore().getAttachmentFile(id)
-      if (!file) throw new WikiError('Diesen Anhang gibt es nicht mehr.')
-      const win = getWindow()
-      const options = {
-        title: 'Anhang speichern',
-        defaultPath: path.join(app.getPath('documents'), cleanAttachmentName(file.name))
-      }
-      const result = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
-      if (result.canceled || !result.filePath) return null
-      fs.writeFileSync(result.filePath, file.data)
-      return result.filePath
-    },
+    openTaskAttachment: (id) => openStoredFile(currentStore().tasks.getTaskAttachmentFile(id), `aufgabe-${id}`),
+    saveTaskAttachmentAs: (id) => saveStoredFileAs(getWindow(), currentStore().tasks.getTaskAttachmentFile(id)),
 
     getUpdateState,
     checkForUpdates: () => checkForUpdates(false),

@@ -1,11 +1,32 @@
-import { CalendarDays, CalendarX, Check, ChevronLeft, ChevronRight, Copy, PanelRightOpen, Trash2, UserMinus, UserPlus } from 'lucide-react'
+import {
+  CalendarDays,
+  CalendarX,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  PanelRightOpen,
+  Paperclip,
+  Trash2,
+  UserMinus,
+  UserPlus
+} from 'lucide-react'
 import { useCallback, useLayoutEffect, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { PRIORITY_LABEL, PRIORITY_ORDER, PROGRESS_LABEL, PROGRESS_ORDER } from '../../../shared/tasks'
 import { useWiki } from '../store'
 import { DATE_KEY_HINT, formatDue, formatWeekday, quickDueOptions, todayString } from './dates'
 import { Avatar, dateKeys, PriorityIcon, ProgressIcon, useDismiss } from './parts'
-import { copyTask, deleteTask, setAssignees, setDueDate, setPriority, setProgress, toggleAssignee } from './taskActions'
+import {
+  copyTask,
+  deleteTask,
+  pickTaskAttachments,
+  setAssignees,
+  setDueDate,
+  setPriority,
+  setProgress,
+  toggleAssignee
+} from './taskActions'
 
 type View = 'main' | 'priority' | 'due' | 'assign'
 
@@ -18,7 +39,7 @@ interface Props {
 
 /**
  * Kontextmenü einer Aufgabe (Rechtsklick oder „…“): Fortschritt, Priorität, Fälligkeit, Zuweisen,
- * Kopieren, Löschen. Liest die Aufgabe live aus dem Board, damit Häkchen sofort stimmen.
+ * Datei anhängen, Kopieren, Löschen. Liest die Aufgabe live aus dem Board, damit Häkchen sofort stimmen.
  */
 export function TaskMenu({ taskId, x, y, onClose }: Props): React.JSX.Element | null {
   const ref = useRef<HTMLDivElement>(null)
@@ -127,6 +148,9 @@ export function TaskMenu({ taskId, x, y, onClose }: Props): React.JSX.Element | 
             </span>
           </button>
           <hr />
+          <button onClick={pick(() => pickTaskAttachments(task.id))}>
+            Datei anhängen… <Paperclip size={14} />
+          </button>
           <button onClick={pick(() => copyTask(task))}>
             Aufgabe kopieren <Copy size={14} />
           </button>

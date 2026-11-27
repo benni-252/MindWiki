@@ -1,6 +1,13 @@
 // Board-Logik ohne Oberfläche: Filtern, Gruppieren in Spalten, Ziehen und Sortieren.
 
-import { PRIORITY_LABEL, PRIORITY_ORDER, PROGRESS_LABEL, PROGRESS_ORDER } from '../../../shared/tasks'
+import {
+  isDoneBucket,
+  PRIORITY_LABEL,
+  PRIORITY_ORDER,
+  PROGRESS_LABEL,
+  PROGRESS_ORDER,
+  progressForBucketChange
+} from '../../../shared/tasks'
 import type { NewTaskOptions, Task, TaskBoard, TaskBucket, TaskPriority, TaskProgress } from '../../../shared/types'
 import { DUE_LABEL, DUE_ORDER, dueDropDate, dueKey, type DueKey } from './dates'
 
@@ -82,7 +89,7 @@ export type DropRule =
 export interface BoardColumn {
   key: string
   title: string
-  /** Offene Aufgaben (bei „Fortschritt › Erledigt“ die erledigten) */
+  /** Offene Aufgaben (bei „Fortschritt › Erledigt“ und im Bucket „Erledigt“ auch die erledigten) */
   tasks: Task[]
   /** Erledigte Aufgaben – eingeklappt unten in der Spalte */
   completed: Task[]
@@ -103,6 +110,7 @@ function boardOrder(board: TaskBoard): (a: Task, b: Task) => number {
 
 const byCompleted = (a: Task, b: Task): number => (b.completedAt ?? '').localeCompare(a.completedAt ?? '') || b.id - a.id
 
+/** `doneInline`: erledigte nicht einklappen, sondern unter den offenen zeigen (zuletzt erledigte zuerst) */
 function column(
   key: string,
   title: string,
@@ -111,9 +119,11 @@ function column(
   extra: Pick<BoardColumn, 'drop' | 'add'> & Partial<BoardColumn>,
   doneInline = false
 ): BoardColumn {
-  const open = tasks.filter((t) => doneInline || t.progress !== 'done').sort(doneInline ? byCompleted : order)
-  const completed = doneInline ? [] : tasks.filter((t) => t.progress === 'done').sort(byCompleted)
-  return { key, title, tasks: open, completed, ...extra }
+  const open = tasks.filter((t) => t.progress !== 'done').sort(order)
+  const completed = tasks.filter((t) => t.progress === 'done').sort(byCompleted)
+  return doneInline
+    ? { key, title, tasks: [...open, ...completed], completed: [], ...extra }
+    : { key, title, tasks: open, completed, ...extra }
 }
 
 /** Teilt die (gefilterten) Aufgaben in Spalten – je nach Gruppierung wie im Planner. */
@@ -121,15 +131,23 @@ export function buildColumns(board: TaskBoard, tasks: Task[], groupBy: GroupBy, 
   const order = boardOrder(board)
   switch (groupBy) {
     case 'bucket':
-      return board.buckets.map((bucket) =>
-        column(
+      return board.buckets.map((bucket) => {
+        // Im Bucket „Erledigt“ ist (fast) alles erledigt – dort nichts einklappen
+        const done = isDoneBucket(bucket.name)
+        return column(
           `bucket-${bucket.id}`,
           bucket.name,
           tasks.filter((t) => t.bucketId === bucket.id),
           (a, b) => a.position - b.position || a.id - b.id,
-          { bucket, drop: { kind: 'bucket', bucketId: bucket.id }, add: { bucketId: bucket.id } }
+          {
+            bucket,
+            drop: { kind: 'bucket', bucketId: bucket.id },
+            add: { bucketId: bucket.id },
+            tone: done ? 'progress-done' : undefined
+          },
+          done
         )
-      )
+      })
     case 'progress':
       return PROGRESS_ORDER.map((progress) =>
         column(
@@ -195,10 +213,21 @@ export function reassign(assignees: string[], from: string | null, to: string | 
   return next
 }
 
-/** Sofort anzeigen, bevor die Wiki-Datei antwortet: Aufgabe in einen Bucket vor `beforeId` einreihen */
+/**
+ * Sofort anzeigen, bevor die Wiki-Datei antwortet: Aufgabe in einen Bucket vor `beforeId` einreihen.
+ * Wie in der Wiki-Datei: in den Bucket „Erledigt“ → erledigt, wieder heraus → offen.
+ */
 export function moveInBoard(board: TaskBoard, taskId: number, bucketId: number, beforeId: number | null): TaskBoard {
   const moving = board.tasks.find((t) => t.id === taskId)
   if (!moving) return board
+  const name = (id: number): string => board.buckets.find((b) => b.id === id)?.name ?? ''
+  const progress =
+    moving.bucketId === bucketId ? undefined : progressForBucketChange(moving.progress, name(moving.bucketId), name(bucketId))
+  const status: Partial<Task> = !progress
+    ? {}
+    : progress === 'done'
+      ? { progress, completedAt: new Date().toISOString() }
+      : { progress, completedBy: null, completedAt: null }
   const ids = board.tasks
     .filter((t) => t.bucketId === bucketId && t.id !== taskId)
     .sort((a, b) => a.position - b.position || a.id - b.id)
@@ -209,7 +238,9 @@ export function moveInBoard(board: TaskBoard, taskId: number, bucketId: number, 
   return {
     ...board,
     tasks: board.tasks.map((t) =>
-      pos.has(t.id) ? { ...t, bucketId: t.id === taskId ? bucketId : t.bucketId, position: pos.get(t.id)! } : t
+      pos.has(t.id)
+        ? { ...t, ...(t.id === taskId ? { bucketId, ...status } : {}), position: pos.get(t.id)! }
+        : t
     )
   }
 }

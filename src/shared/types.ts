@@ -328,6 +328,19 @@ export interface Task {
   labelIds: number[]
   checklist: TaskCheckItem[]
   commentCount: number
+  attachmentCount: number
+}
+
+/** Angehängte Datei an einer Aufgabe (der Inhalt liegt in der Wiki-Datei) */
+export interface TaskAttachment {
+  id: number
+  taskId: number
+  name: string
+  mime: string
+  /** Größe in Byte */
+  size: number
+  addedBy: string | null
+  addedAt: string
 }
 
 export interface TaskComment {
@@ -388,7 +401,7 @@ export interface TaskRpc {
   /** In `bucketId` vor `beforeId` einreihen (null: ans Ende) */
   moveTask(id: number, bucketId: number, beforeId: number | null): void
   deleteTask(id: number): void
-  /** Kopie mit Checkliste, Bezeichnungen und Zuweisungen (ohne Kommentare); liefert die ID */
+  /** Kopie mit Checkliste, Bezeichnungen, Zuweisungen und Anhängen (ohne Kommentare); liefert die ID */
   copyTask(id: number): number
   setTaskAssignees(id: number, usernames: string[]): void
   createTaskLabel(name: string, color: string): number
@@ -405,6 +418,10 @@ export interface TaskRpc {
   addTaskComment(taskId: number, text: string): number
   /** Nur eigene Kommentare */
   deleteTaskComment(id: number): void
+  getTaskAttachments(taskId: number): TaskAttachment[]
+  /** Datei anhängen (Ziehen und Ablegen); liefert die Nummer des Anhangs */
+  addTaskAttachment(taskId: number, name: string, data: Uint8Array): number
+  deleteTaskAttachment(id: number): void
 }
 
 export const TASK_METHODS = [
@@ -430,7 +447,10 @@ export const TASK_METHODS = [
   'moveTaskCheckItem',
   'getTaskComments',
   'addTaskComment',
-  'deleteTaskComment'
+  'deleteTaskComment',
+  'getTaskAttachments',
+  'addTaskAttachment',
+  'deleteTaskAttachment'
 ] as const satisfies readonly (keyof TaskRpc)[]
 
 /**
@@ -534,6 +554,10 @@ export interface WikiRpc extends TaskRpc {
   openAttachment(id: number): Promise<void>
   /** Speichert eine Kopie; liefert den Pfad oder null (abgebrochen) */
   saveAttachmentAs(id: number): Promise<string | null>
+  /** Wie oben, für Anhänge an Aufgaben */
+  addTaskAttachmentFiles(taskId: number): Promise<AttachResult>
+  openTaskAttachment(id: number): Promise<void>
+  saveTaskAttachmentAs(id: number): Promise<string | null>
   /** Artikel als PDF speichern; liefert den Pfad oder null (abgebrochen) */
   exportPdf(id: number): Promise<string | null>
   getUpdateState(): UpdateState
@@ -635,6 +659,9 @@ export const RPC_METHODS = [
   'deleteAttachment',
   'openAttachment',
   'saveAttachmentAs',
+  'addTaskAttachmentFiles',
+  'openTaskAttachment',
+  'saveTaskAttachmentAs',
   'getUpdateState',
   'checkForUpdates',
   'downloadUpdate',

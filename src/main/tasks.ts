@@ -1,16 +1,20 @@
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
+import { attachmentProblem, cleanAttachmentName, mimeOf, uniqueAttachmentName } from '../shared/attachments'
 import {
   DEFAULT_BUCKET,
   isDateString,
+  isDoneBucket,
   isLabelColor,
   isTaskPreview,
   isTaskPriority,
   isTaskProgress,
+  progressForBucketChange,
   TASK_LIMITS
 } from '../shared/tasks'
 import type {
   NewTaskOptions,
   Task,
+  TaskAttachment,
   TaskBoard,
   TaskCheckItem,
   TaskComment,
@@ -40,9 +44,9 @@ function cleanDate(value: unknown): string | null {
 }
 
 /**
- * Aufgaben in der Wiki-Datei: Buckets, Aufgaben mit Checkliste, Bezeichnungen, Zuweisungen und
- * Kommentaren. Anders als Artikel ohne Verlauf und ohne Freigabe – wie im Planner darf jeder
- * angemeldete Benutzer alles ändern.
+ * Aufgaben in der Wiki-Datei: Buckets, Aufgaben mit Checkliste, Bezeichnungen, Zuweisungen,
+ * Kommentaren und Anhängen. Anders als Artikel ohne Verlauf und ohne Freigabe – wie im Planner darf
+ * jeder angemeldete Benutzer alles ändern. Aufgaben im Bucket „Erledigt“ gelten als erledigt.
  */
 export class TaskStore implements TaskRpc {
   constructor(
@@ -87,10 +91,11 @@ export class TaskStore implements TaskRpc {
     return new Date().toISOString()
   }
 
-  private requireBucket(id: number): void {
-    if (!this.get('SELECT 1 FROM task_buckets WHERE id = ?', id)) {
-      throw new WikiError('Diesen Bucket gibt es nicht mehr.')
-    }
+  /** Prüft, ob es den Bucket gibt, und liefert seinen Namen */
+  private requireBucket(id: number): string {
+    const row = this.get<{ name: string }>('SELECT name FROM task_buckets WHERE id = ?', id)
+    if (!row) throw new WikiError('Diesen Bucket gibt es nicht mehr.')
+    return row.name
   }
 
   private requireTask(id: number): { bucket_id: number; progress: TaskProgress } {
@@ -167,7 +172,8 @@ export class TaskStore implements TaskRpc {
 
     const tasks: Task[] = this.all<Row>(
       `SELECT t.*, CASE WHEN a.deleted_at IS NULL THEN a.title END AS article_title,
-              (SELECT COUNT(*) FROM task_comments c WHERE c.task_id = t.id) AS comment_count
+              (SELECT COUNT(*) FROM task_comments c WHERE c.task_id = t.id) AS comment_count,
+              (SELECT COUNT(*) FROM task_attachments x WHERE x.task_id = t.id) AS attachment_count
          FROM tasks t
          LEFT JOIN articles a ON a.id = t.article_id
         ORDER BY t.position, t.id`
@@ -193,7 +199,8 @@ export class TaskStore implements TaskRpc {
         assignees: assignees.get(id) ?? [],
         labelIds: labelIds.get(id) ?? [],
         checklist: checklists.get(id) ?? [],
-        commentCount: r.comment_count as number
+        commentCount: r.comment_count as number,
+        attachmentCount: r.attachment_count as number
       }
     })
     return { buckets, tasks, labels, users }
@@ -219,7 +226,10 @@ export class TaskStore implements TaskRpc {
 
   deleteBucket(id: number): void {
     this.requireBucket(id)
-    this.run('DELETE FROM task_buckets WHERE id = ?', id)
+    this.tx(() => {
+      this.run('DELETE FROM task_buckets WHERE id = ?', id)
+      this.cleanupFiles()
+    })
   }
 
   // ---------- Aufgaben ----------
@@ -228,7 +238,7 @@ export class TaskStore implements TaskRpc {
     const clean = cleanText(title, TASK_LIMITS.title, 'Der Titel')
     return this.tx(() => {
       const bucket = bucketId == null ? this.firstBucket() : bucketId
-      this.requireBucket(bucket)
+      const bucketName = this.requireBucket(bucket)
       // Wie im Planner: neue Aufgaben stehen oben
       const top = this.get<{ p: number }>('SELECT COALESCE(MIN(position), 1) - 1 AS p FROM tasks WHERE bucket_id = ?', bucket)?.p ?? 0
       const id = this.run(
@@ -240,6 +250,8 @@ export class TaskStore implements TaskRpc {
         this.now()
       )
       const { assignees, ...patch } = options
+      // Direkt im Bucket „Erledigt“ angelegt: gleich erledigt
+      if (bucketId != null && patch.progress === undefined && isDoneBucket(bucketName)) patch.progress = 'done'
       if (Object.keys(patch).length > 0) this.updateTask(id, patch)
       if (assignees?.length) this.setTaskAssignees(id, assignees)
       return id
@@ -301,8 +313,8 @@ export class TaskStore implements TaskRpc {
   }
 
   moveTask(id: number, bucketId: number, beforeId: number | null): void {
-    this.requireTask(id)
-    this.requireBucket(bucketId)
+    const task = this.requireTask(id)
+    const to = this.requireBucket(bucketId)
     this.tx(() => {
       const ids = this.all<{ id: number }>('SELECT id FROM tasks WHERE bucket_id = ? AND id <> ? ORDER BY position, id', bucketId, id).map(
         (r) => r.id
@@ -311,12 +323,21 @@ export class TaskStore implements TaskRpc {
       ids.splice(at < 0 ? ids.length : at, 0, id)
       this.run('UPDATE tasks SET bucket_id = ? WHERE id = ?', bucketId, id)
       this.renumber('tasks', ids)
+      // In den Bucket „Erledigt“ → erledigt; wieder heraus → offen
+      if (task.bucket_id !== bucketId) {
+        const from = this.get<{ name: string }>('SELECT name FROM task_buckets WHERE id = ?', task.bucket_id)?.name ?? ''
+        const progress = progressForBucketChange(task.progress, from, to)
+        if (progress) this.updateTask(id, { progress })
+      }
     })
   }
 
   deleteTask(id: number): void {
     this.requireTask(id)
-    this.run('DELETE FROM tasks WHERE id = ?', id)
+    this.tx(() => {
+      this.run('DELETE FROM tasks WHERE id = ?', id)
+      this.cleanupFiles()
+    })
   }
 
   copyTask(id: number): number {
@@ -351,6 +372,13 @@ export class TaskStore implements TaskRpc {
       this.run('INSERT INTO task_label_links (task_id, label_id) SELECT ?, label_id FROM task_label_links WHERE task_id = ?', copy, id)
       this.run(
         'INSERT INTO task_checklist (task_id, text, checked, position) SELECT ?, text, 0, position FROM task_checklist WHERE task_id = ?',
+        copy,
+        id
+      )
+      // Anhänge: nur die Verweise – der Inhalt liegt einmal in task_files
+      this.run(
+        `INSERT INTO task_attachments (task_id, file_id, name, mime, size, added_by, added_at, position)
+         SELECT ?, file_id, name, mime, size, added_by, added_at, position FROM task_attachments WHERE task_id = ?`,
         copy,
         id
       )
@@ -484,5 +512,72 @@ export class TaskStore implements TaskRpc {
       throw new WikiError('Nur eigene Kommentare können gelöscht werden.')
     }
     this.run('DELETE FROM task_comments WHERE id = ?', id)
+  }
+
+  // ---------- Anhänge ----------
+
+  getTaskAttachments(taskId: number): TaskAttachment[] {
+    return this.all<Row>(
+      'SELECT id, task_id, name, mime, size, added_by, added_at FROM task_attachments WHERE task_id = ? ORDER BY position, id',
+      taskId
+    ).map((r) => ({
+      id: r.id as number,
+      taskId: r.task_id as number,
+      name: r.name as string,
+      mime: r.mime as string,
+      size: r.size as number,
+      addedBy: (r.added_by as string | null) ?? null,
+      addedAt: r.added_at as string
+    }))
+  }
+
+  addTaskAttachment(taskId: number, name: string, data: Uint8Array): number {
+    this.requireTask(taskId)
+    if (typeof name !== 'string' || !(data instanceof Uint8Array)) throw new WikiError('Ungültige Datei.')
+    const clean = cleanAttachmentName(name)
+    const problem = attachmentProblem(clean, data.byteLength)
+    if (problem) throw new WikiError(problem)
+    return this.tx(() => {
+      // Gleicher Name schon da: „Name (2).pdf“
+      const unique = uniqueAttachmentName(clean, this.getTaskAttachments(taskId).map((x) => x.name))
+      const fileId = this.run('INSERT INTO task_files (data, created_at) VALUES (?, ?)', data, this.now())
+      const next =
+        this.get<{ p: number }>('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM task_attachments WHERE task_id = ?', taskId)?.p ?? 0
+      return this.run(
+        `INSERT INTO task_attachments (task_id, file_id, name, mime, size, added_by, added_at, position)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        taskId,
+        fileId,
+        unique,
+        mimeOf(unique),
+        data.byteLength,
+        this.author(),
+        this.now(),
+        next
+      )
+    })
+  }
+
+  deleteTaskAttachment(id: number): void {
+    this.tx(() => {
+      this.run('DELETE FROM task_attachments WHERE id = ?', id)
+      this.cleanupFiles()
+    })
+  }
+
+  /** Inhalt eines Anhangs (zum Öffnen oder Speichern) – nicht Teil der IPC-Schnittstelle */
+  getTaskAttachmentFile(id: number): { name: string; mime: string; data: Uint8Array } | undefined {
+    return this.get<{ name: string; mime: string; data: Uint8Array }>(
+      'SELECT a.name, a.mime, f.data FROM task_attachments a JOIN task_files f ON f.id = a.file_id WHERE a.id = ?',
+      id
+    )
+  }
+
+  /**
+   * Entfernt Inhalte, auf die kein Anhang mehr zeigt – auch solche, die ältere Versionen beim Löschen
+   * einer Aufgabe zurückgelassen haben (sie kennen task_files nicht).
+   */
+  cleanupFiles(): number {
+    return Number(this.db.prepare('DELETE FROM task_files WHERE id NOT IN (SELECT file_id FROM task_attachments)').run().changes)
   }
 }

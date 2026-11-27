@@ -2,6 +2,26 @@
 
 Jeder Abschnitt wird automatisch zur Beschreibung des Releases dieser Version (siehe `.github/workflows/windows-build.yml`).
 
+## 1.15.0
+
+**Neu: Dateien an Aufgaben anhängen**
+- Dateien aus dem Explorer einfach **auf eine Karte ziehen** – oder in den Details unter *Anhänge* bzw. im Rechtsklick-Menü *Datei anhängen…* wählen (mehrere Dateien auf einmal möglich).
+- Die Karte zeigt eine Büroklammer mit der Anzahl der Anhänge.
+- In den Details: öffnen (schreibgeschützte Kopie im passenden Programm), *Speichern unter…* und entfernen.
+- Es gelten dieselben Regeln wie bei Anhängen an Artikeln: bis 50 MB pro Datei, Programme und Skripte sind gesperrt. Die Dateien liegen in der Wiki-Datei (und damit in jeder Sicherung).
+- Eine kopierte Aufgabe behält ihre Anhänge.
+
+**Neu: Bucket „Erledigt“ hakt Aufgaben ab**
+- Wird eine Aufgabe in einen Bucket namens **Erledigt** gezogen (oder dort angelegt), ist sie automatisch erledigt. Zieht man sie wieder heraus, ist sie wieder offen.
+- Gilt auch, wenn man den Bucket in den Details ändert. Der Bucket hat einen grünen Punkt, und seine Aufgaben werden nicht eingeklappt.
+- Aufgaben, die schon vorher im Bucket lagen, bleiben unverändert.
+
+**Download**
+- `MindWiki-Setup-1.15.0.exe` – Installer (mit automatischen Updates)
+- `MindWiki-1.15.0-portable.exe` – ohne Installation starten
+
+Ältere Versionen (1.11 bis 1.14) können die Wiki-Datei weiter gleichzeitig nutzen, sehen aber keine Anhänge an Aufgaben. Die Anhänge bleiben dabei erhalten.
+
 ## 1.14.0
 
 **Neu: Überfällige Aufgaben sind rot**

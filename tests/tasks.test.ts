@@ -4,6 +4,8 @@ import path from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { MIGRATIONS, openDatabase } from '../src/main/db'
 import { WikiError, WikiStore } from '../src/main/store'
+import { MAX_ATTACHMENT_BYTES } from '../src/shared/attachments'
+import { isDoneBucket, progressForBucketChange } from '../src/shared/tasks'
 import type { TaskBoard } from '../src/shared/types'
 import {
   buildColumns,
@@ -247,6 +249,95 @@ describe('Aufgaben in der Wiki-Datei', () => {
     expect(task(id)).toMatchObject({ articleId: null, articleTitle: null })
   })
 
+  it('hängt Dateien an – Kopien teilen den Inhalt, weg ist er erst mit dem letzten Verweis', () => {
+    const bytes = (text: string) => new TextEncoder().encode(text)
+    const files = () => (store.db.prepare('SELECT COUNT(*) AS n FROM task_files').get() as { n: number }).n
+    const bucket = store.tasks.createBucket('Zu erledigen')
+    const id = store.tasks.createTask(bucket, 'Drucker tauschen')
+    const offer = store.tasks.addTaskAttachment(id, 'C:\\Temp\\Angebot.pdf', bytes('%PDF Angebot'))
+    store.tasks.addTaskAttachment(id, 'angebot.pdf', bytes('%PDF zweites'))
+    expect(store.tasks.getTaskAttachments(id).map((x) => [x.name, x.mime, x.size, x.addedBy])).toEqual([
+      ['Angebot.pdf', 'application/pdf', 12, 'Anna'],
+      ['angebot (2).pdf', 'application/pdf', 12, 'Anna']
+    ])
+    expect(task(id).attachmentCount).toBe(2)
+    expect(new TextDecoder().decode(store.tasks.getTaskAttachmentFile(offer)!.data)).toBe('%PDF Angebot')
+
+    expect(() => store.tasks.addTaskAttachment(id, 'Rechnung.pdf.exe', bytes('MZ'))).toThrow(/Programme und Skripte/)
+    expect(() => store.tasks.addTaskAttachment(id, 'leer.txt', new Uint8Array())).toThrow(/leer/)
+    expect(() => store.tasks.addTaskAttachment(id, 'riesig.zip', new Uint8Array(MAX_ATTACHMENT_BYTES + 1))).toThrow(/zu groß/)
+    expect(() => store.tasks.addTaskAttachment(999, 'x.txt', bytes('x'))).toThrow(/Aufgabe/)
+    expect(task(id).attachmentCount).toBe(2)
+
+    // Ältere Versionen räumen `files` auf (Artikel-Anhänge) – Aufgaben-Anhänge liegen woanders
+    expect(store.cleanupFiles()).toBe(0)
+    expect(store.tasks.getTaskAttachmentFile(offer)).toBeTruthy()
+
+    // Die Kopie zeigt auf denselben Inhalt
+    const copy = store.tasks.copyTask(id)
+    expect(store.tasks.getTaskAttachments(copy).map((x) => x.name)).toEqual(['Angebot.pdf', 'angebot (2).pdf'])
+    expect(files()).toBe(2)
+    store.tasks.deleteTaskAttachment(offer)
+    expect(task(id).attachmentCount).toBe(1)
+    expect(files()).toBe(2) // die Kopie braucht das Angebot noch
+    store.tasks.deleteTask(copy)
+    expect(files()).toBe(1)
+
+    // Löscht eine ältere Version die Aufgabe, bleibt der Inhalt liegen – bis zum nächsten Aufräumen
+    const old = store.tasks.createTask(bucket, 'Alt')
+    store.tasks.addTaskAttachment(old, 'Notiz.txt', bytes('x'))
+    store.db.prepare('DELETE FROM tasks WHERE id = ?').run(old)
+    expect(files()).toBe(2)
+    store.tasks.deleteBucket(bucket)
+    expect(files()).toBe(0)
+  })
+
+  it('hakt Aufgaben im Bucket „Erledigt“ ab und öffnet sie beim Herausziehen wieder', () => {
+    const todo = store.tasks.createBucket('Zu erledigen')
+    const done = store.tasks.createBucket('erledigt')
+    const later = store.tasks.createBucket('Später')
+    const id = store.tasks.createTask(todo, 'Toner bestellen', { progress: 'active' })
+
+    store.author = 'Ben'
+    store.tasks.moveTask(id, done, null)
+    expect(task(id)).toMatchObject({ bucketId: done, progress: 'done', completedBy: 'Ben' })
+    // Direkt in „Erledigt“ angelegt: gleich erledigt
+    const direct = store.tasks.createTask(done, 'Direkt erledigt')
+    expect(task(direct).progress).toBe('done')
+    // Im Bucket wieder geöffnet und umsortiert: bleibt offen
+    store.tasks.updateTask(id, { progress: 'open' })
+    store.tasks.moveTask(id, done, direct)
+    expect(task(id).progress).toBe('open')
+
+    // Heraus: wieder offen; über die Details (Bucket ändern) genauso hinein
+    store.tasks.moveTask(direct, todo, null)
+    expect(task(direct)).toMatchObject({ progress: 'open', completedBy: null, completedAt: null })
+    store.tasks.updateTask(direct, { bucketId: done })
+    expect(task(direct).progress).toBe('done')
+
+    // Zwischen anderen Buckets bleibt „erledigt“, wie es ist
+    const other = store.tasks.createTask(todo, 'Anderes')
+    store.tasks.updateTask(other, { progress: 'done' })
+    store.tasks.moveTask(other, later, null)
+    expect(task(other).progress).toBe('done')
+
+    // Die sofortige Anzeige rechnet genauso
+    const moved = (b: TaskBoard, taskId: number) => b.tasks.find((t) => t.id === taskId)!
+    expect(moved(moveInBoard(board(), direct, todo, null), direct)).toMatchObject({ progress: 'open', completedAt: null })
+    expect(moved(moveInBoard(board(), other, done, null), other).progress).toBe('done')
+    expect(moved(moveInBoard(board(), id, done, direct), id).progress).toBe('open')
+  })
+
+  it('erkennt den Bucket „Erledigt“ am Namen', () => {
+    expect(['Erledigt', ' erledigt ', 'ERLEDIGT'].map(isDoneBucket)).toEqual([true, true, true])
+    expect(['Erledigt (alt)', 'Zu erledigen', ''].map(isDoneBucket)).toEqual([false, false, false])
+    expect(progressForBucketChange('active', 'Zu erledigen', 'Erledigt')).toBe('done')
+    expect(progressForBucketChange('done', 'Zu erledigen', 'Erledigt')).toBeUndefined()
+    expect(progressForBucketChange('done', 'Erledigt', 'Zu erledigen')).toBe('open')
+    expect(progressForBucketChange('active', 'Erledigt', 'Zu erledigen')).toBeUndefined()
+    expect(progressForBucketChange('done', 'Zu erledigen', 'Später')).toBeUndefined()
+  })
+
   it('braucht keinen Versionssprung und bleibt in der Datei erhalten', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mindwiki-tasks-'))
     const file = path.join(dir, 'Wiki.db')
@@ -401,6 +492,22 @@ describe('Board', () => {
     expect(run({ labels: [b.labels[0].id] })).toEqual(['Switch-Firmware'])
     expect(run({ assignees: [''] })).toEqual(['Angebot NAS', 'Drucker prüfen'])
     expect(summarize(b.tasks, today)).toEqual({ total: 4, open: 3, active: 0, done: 1, overdue: 1 })
+  })
+
+  it('klappt im Bucket „Erledigt“ nichts ein: offene oben, dann zuletzt erledigte', () => {
+    const todo = store.tasks.createBucket('Zu erledigen')
+    const done = store.tasks.createBucket('Erledigt')
+    store.tasks.createTask(done, 'Alt')
+    store.tasks.createTask(done, 'Neu')
+    const reopened = store.tasks.createTask(done, 'Wieder offen')
+    store.tasks.updateTask(reopened, { progress: 'open' })
+    store.tasks.updateTask(store.tasks.createTask(todo, 'Fertig'), { progress: 'done' })
+    const [todoCol, doneCol] = buildColumns(board(), board().tasks, 'bucket', today)
+    expect(doneCol).toMatchObject({ tone: 'progress-done', completed: [] })
+    expect(doneCol.tasks.map((t) => t.title)).toEqual(['Wieder offen', 'Neu', 'Alt'])
+    // Andere Buckets klappen erledigte weiter ein
+    expect(todoCol.tone).toBeUndefined()
+    expect(todoCol.completed.map((t) => t.title)).toEqual(['Fertig'])
   })
 
   it('sortiert die Liste, erledigte immer unten', () => {

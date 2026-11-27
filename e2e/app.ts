@@ -75,3 +75,17 @@ export async function rename(page: Page, title: string): Promise<void> {
 export function removeDir(dir: string): void {
   fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 })
 }
+
+/** Zieht Dateien wie aus dem Explorer auf ein Element. */
+export async function dropFiles(page: Page, selector: string, files: { name: string; text: string; type: string }[]): Promise<void> {
+  const transfer = await page.evaluateHandle((list) => {
+    const dt = new DataTransfer()
+    for (const f of list) dt.items.add(new File([f.text], f.name, { type: f.type }))
+    return dt
+  }, files)
+  // Wie bei einem echten Drop: mit Mausposition (der Editor braucht sie, um die Stelle zu bestimmen)
+  const box = (await page.locator(selector).first().boundingBox())!
+  const at = { clientX: box.x + box.width / 2, clientY: box.y + Math.min(box.height / 2, 20) }
+  await page.dispatchEvent(selector, 'dragover', { dataTransfer: transfer, ...at })
+  await page.dispatchEvent(selector, 'drop', { dataTransfer: transfer, ...at })
+}
